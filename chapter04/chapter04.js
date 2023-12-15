@@ -29,5 +29,7 @@ function locals(n, type) {
 
 const localidx = u32;
 
+instr.drop = 0x1a;
+
 export * from './chapter03.js';
 export { locals, localidx };

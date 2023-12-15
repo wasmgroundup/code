@@ -57,9 +57,6 @@ function code(func) {
 }
 
 function func(locals, body) {
-  if (locals.length > 0) {
-    throw new Error('locals are not yet supported');
-  }
   return [vec(locals), body];
 }
 
@@ -84,8 +81,8 @@ function exportsec(exports) {
 const funcidx = u32;
 
 const exportdesc = {
-  funcidx(v) {
-    return [0x00, funcidx(v)];
+  func(idx) {
+    return [0x00, funcidx(idx)];
   },
 };
 
@@ -142,6 +139,10 @@ function i32(v) {
 }
 
 export {
+  SECTION_ID_CODE,
+  SECTION_ID_EXPORT,
+  SECTION_ID_FUNCTION,
+  SECTION_ID_TYPE,
   code,
   codesec,
   export_,
@@ -158,10 +159,6 @@ export {
   module,
   name,
   section,
-  SECTION_ID_CODE,
-  SECTION_ID_EXPORT,
-  SECTION_ID_FUNCTION,
-  SECTION_ID_TYPE,
   stringToBytes,
   typeidx,
   typesec,

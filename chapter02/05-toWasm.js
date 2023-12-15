@@ -30,6 +30,14 @@ const valtype = {
   f64: 0x7c,
 };
 
+function testExtractedExamples(grammarSource) {
+  const grammar = ohm.grammar(grammarSource);
+  for (const ex of extractExamples(grammarSource)) {
+    const result = grammar.match(ex.example, ex.rule);
+    assert.is(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
+  }
+}
+
 const grammarDef = `
   Wafer {
     Main = number
@@ -41,14 +49,9 @@ const grammarDef = `
   }
 `;
 
-const wafer = ohm.grammar(grammarDef);
+test('Extracted examples', () => testExtractedExamples(grammarDef));
 
-test('Wafer examples', () => {
-  for (const ex of extractExamples(grammarDef)) {
-    const matchResult = wafer.match(ex.example, ex.rule);
-    assert.is(matchResult.succeeded(), ex.shouldMatch);
-  }
-});
+const wafer = ohm.grammar(grammarDef);
 
 const semantics = wafer.createSemantics();
 semantics.addOperation('jsValue', {
@@ -78,7 +81,7 @@ function compile(grammar, source) {
   const mod = module([
     typesec([functype([], [valtype.i32])]),
     funcsec([typeidx(0)]),
-    exportsec([export_('main', exportdesc.funcidx(0))]),
+    exportsec([export_('main', exportdesc.func(0))]),
     codesec([code(func([], semantics(matchResult).toWasm()))]),
   ]);
   return Uint8Array.from(mod.flat(Infinity));

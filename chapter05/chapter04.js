@@ -1,3 +1,7 @@
+import * as ohm from 'ohm-js';
+import { extractExamples } from 'ohm-js/extras';
+import * as assert from 'uvu/assert';
+
 function stringToBytes(s) {
   const bytes = new TextEncoder().encode(s);
   return Array.from(bytes);
@@ -57,9 +61,6 @@ function code(func) {
 }
 
 function func(locals, body) {
-  if (locals.length > 0) {
-    throw new Error('locals are not yet supported');
-  }
   return [vec(locals), body];
 }
 
@@ -84,8 +85,8 @@ function exportsec(exports) {
 const funcidx = u32;
 
 const exportdesc = {
-  funcidx(v) {
-    return [0x00, funcidx(v)];
+  func(idx) {
+    return [0x00, funcidx(idx)];
   },
 };
 
@@ -141,7 +142,47 @@ function i32(v) {
   return r;
 }
 
+instr.i32 = { const: 0x41 };
+instr.i64 = { const: 0x42 };
+instr.f32 = { const: 0x43 };
+instr.f64 = { const: 0x44 };
+
+const valtype = {
+  i32: 0x7f,
+  i64: 0x7e,
+  f32: 0x7d,
+  f64: 0x7c,
+};
+
+function testExtractedExamples(grammarSource) {
+  const grammar = ohm.grammar(grammarSource);
+  for (const ex of extractExamples(grammarSource)) {
+    const result = grammar.match(ex.example, ex.rule);
+    assert.is(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
+  }
+}
+
+instr.i32.add = 0x6a;
+instr.i32.sub = 0x6b;
+
+instr.local = {};
+instr.local.get = 0x20;
+instr.local.set = 0x21;
+instr.local.tee = 0x22;
+
+function locals(n, type) {
+  return [u32(n), type];
+}
+
+const localidx = u32;
+
+instr.drop = 0x1a;
+
 export {
+  SECTION_ID_CODE,
+  SECTION_ID_EXPORT,
+  SECTION_ID_FUNCTION,
+  SECTION_ID_TYPE,
   code,
   codesec,
   export_,
@@ -154,18 +195,18 @@ export {
   i32,
   instr,
   int32ToBytes,
+  localidx,
+  locals,
   magic,
   module,
   name,
   section,
-  SECTION_ID_CODE,
-  SECTION_ID_EXPORT,
-  SECTION_ID_FUNCTION,
-  SECTION_ID_TYPE,
   stringToBytes,
+  testExtractedExamples,
   typeidx,
   typesec,
   u32,
+  valtype,
   vec,
   version,
 };

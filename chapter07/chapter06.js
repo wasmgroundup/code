@@ -162,11 +162,118 @@ function testExtractedExamples(grammarSource) {
   }
 }
 
+instr.i32.add = 0x6a;
+instr.i32.sub = 0x6b;
+
+instr.local = {};
+instr.local.get = 0x20;
+instr.local.set = 0x21;
+instr.local.tee = 0x22;
+
+function locals(n, type) {
+  return [u32(n), type];
+}
+
+const localidx = u32;
+
+instr.drop = 0x1a;
+
+instr.global = {};
+instr.global.get = 0x23;
+instr.global.set = 0x24;
+
+const globalidx = u32;
+
+exportdesc.global = (idx) => [0x03, globalidx(idx)];
+
+const SECTION_ID_GLOBAL = 6;
+
+const mut = {
+  const: 0x00,
+  var: 0x01,
+};
+
+// t:valtype  m:mut
+function globaltype(t, m) {
+  return [t, m];
+}
+
+// gt:globaltype  e:expr
+function global(gt, e) {
+  return [gt, e];
+}
+
+// glob*:vec(global)
+function globalsec(globs) {
+  return section(SECTION_ID_GLOBAL, vec(globs));
+}
+
+instr.call = 0x10;
+
+const SECTION_ID_IMPORT = 2;
+
+// mod:name  nm:name  d:importdesc
+function import_(mod, nm, d) {
+  return [name(mod), name(nm), d];
+}
+
+// im*:vec(import)
+function importsec(ims) {
+  return section(SECTION_ID_IMPORT, vec(ims));
+}
+
+const importdesc = {
+  // x:typeidx
+  func(x) {
+    return [0x00, funcidx(x)];
+  },
+};
+
+// a == 0
+instr.i32.eqz = 0x45;
+// a == b
+instr.i32.eq = 0x46;
+// a !== b
+instr.i32.ne = 0x47;
+// a < b
+instr.i32.lt_s = 0x48;
+// a < b
+instr.i32.lt_u = 0x49;
+// a > b
+instr.i32.gt_s = 0x4a;
+// a > b
+instr.i32.gt_u = 0x4b;
+// a <= b
+instr.i32.le_s = 0x4c;
+// a <= b
+instr.i32.le_u = 0x4d;
+// a >= b
+instr.i32.ge_s = 0x4e;
+// a >= b
+instr.i32.ge_u = 0x4f;
+
+instr.i32.and = 0x71;
+instr.i32.or = 0x72;
+
+const blocktype = { empty: 0x40, ...valtype };
+
+valtype.void = 0x40;
+instr.if = 0x04;
+instr.else = 0x05;
+
+instr.block = 0x02;
+instr.loop = 0x03;
+instr.br = 0x0c;
+instr.br_if = 0x0d;
+
 export {
   SECTION_ID_CODE,
   SECTION_ID_EXPORT,
   SECTION_ID_FUNCTION,
+  SECTION_ID_GLOBAL,
+  SECTION_ID_IMPORT,
   SECTION_ID_TYPE,
+  blocktype,
   code,
   codesec,
   export_,
@@ -176,11 +283,21 @@ export {
   funcidx,
   funcsec,
   functype,
+  global,
+  globalidx,
+  globalsec,
+  globaltype,
   i32,
+  import_,
+  importdesc,
+  importsec,
   instr,
   int32ToBytes,
+  localidx,
+  locals,
   magic,
   module,
+  mut,
   name,
   section,
   stringToBytes,

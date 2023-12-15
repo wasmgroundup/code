@@ -22,30 +22,26 @@ import {
   vec,
 } from './chapter03.js';
 
-// mark(5:7)
+// mark(6:10)
 const grammarDef = `
   Wafer {
     Main = Expr
-
-    //+ "let x = 3 + 4;", "let distance = 100 + 2;"
-    //- "let y;"
-    LetStatement = "let" identifier "=" Expr ";"
-
-    Expr = number (op number)*
-
-    op = "+" | "-"
-    number = digit+
+    Expr = number
 
     //+ "x", "élan", "_", "_99"
     //- "1", "$nope"
     identifier = identStart identPart*
     identStart = letter | "_"
-    identPart = identStart | digit
+    identPart = letter | "_" | digit
+
+    number = digit+
 
     // Examples:
-    //+ "42", "1", "66 + 99", "1 + 2 - 3"
+    //+ "42", "1"
     //- "abc"
   }
 `;
+
+test('Extracted examples', () => testExtractedExamples(grammarDef));
 
 test.run();

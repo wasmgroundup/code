@@ -69,7 +69,7 @@ test('test i32 encoder', async () => {
     const mod = module([
       typesec([functype([], [I64])]),
       funcsec([typeidx(0)]),
-      exportsec([export_('main', exportdesc.funcidx(0))]),
+      exportsec([export_('main', exportdesc.func(0))]),
       codesec([code(func([], [I64_CONST, i32(v), instr.end]))]),
     ]);
     const bin = Uint8Array.from(mod.flat(Infinity));
@@ -120,7 +120,7 @@ test('test u32 encoder', async () => {
     const mod = module([
       typesec([functype([], [I64])]),
       funcsec([typeidx(0)]),
-      exportsec([export_('main', exportdesc.funcidx(0))]),
+      exportsec([export_('main', exportdesc.func(0))]),
       codesec([code(func([], [I64_CONST, 0, adds, instr.end]))]),
     ]);
     const bin = Uint8Array.from(mod.flat(Infinity));

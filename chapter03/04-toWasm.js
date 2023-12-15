@@ -1,8 +1,8 @@
 import { setup } from '../book.js';
 
-const { test, assert, ohm, extractExamples } = setup('chapter03');
+const { test, assert, ohm } = setup('chapter03');
 
-import { i32, instr } from './chapter02.js';
+import { i32, instr, testExtractedExamples } from './chapter02.js';
 
 instr.i32.add = 0x6a;
 instr.i32.sub = 0x6b;
@@ -20,14 +20,9 @@ const grammarDef = `
   }
 `;
 
-const wafer = ohm.grammar(grammarDef);
+test('Extracted examples', () => testExtractedExamples(grammarDef));
 
-test('Arithmetic examples', () => {
-  for (const ex of extractExamples(grammarDef)) {
-    const matchResult = wafer.match(ex.example, ex.rule);
-    assert.is(matchResult.succeeded(), ex.shouldMatch);
-  }
-});
+const wafer = ohm.grammar(grammarDef);
 
 const semantics = wafer.createSemantics();
 

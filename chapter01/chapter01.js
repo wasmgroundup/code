@@ -57,9 +57,6 @@ function code(func) {
 }
 
 function func(locals, body) {
-  if (locals.length > 0) {
-    throw new Error('locals are not yet supported');
-  }
   return [vec(locals), body];
 }
 
@@ -84,8 +81,8 @@ function exportsec(exports) {
 const funcidx = u32;
 
 const exportdesc = {
-  funcidx(v) {
-    return [0x00, funcidx(v)];
+  func(idx) {
+    return [0x00, funcidx(idx)];
   },
 };
 
