@@ -2,11 +2,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node scripts/test.js",
+    "test": "node --test 'chapter*/*.js'",
     "postinstall": "cat README.md"
   },
   "devDependencies": {
-    "ohm-js": "^17.1.0",
-    "uvu": "^0.5.6"
+    "ohm-js": "^17.1.0"
   }
 }
