@@ -1,3 +1,17 @@
+import assert from 'node:assert';
+import * as ohm from 'ohm-js';
+import { extractExamples } from 'ohm-js/extras';
+import process from 'node:process';
+import nodeTest from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+function makeTestFn(url) {
+  if (process.env.NODE_TEST_CONTEXT && process.argv[1] === fileURLToPath(url)) {
+    return (...args) => nodeTest(...args); // register the test normally
+  }
+  return () => {}; // ignore the test
+}
+
 function stringToBytes(s) {
   const bytes = new TextEncoder().encode(s);
   return Array.from(bytes);
@@ -138,6 +152,33 @@ function i32(v) {
   return r;
 }
 
+makeTestFn(import.meta.url);
+
+instr.i32 = { const: 0x41 };
+instr.i64 = { const: 0x42 };
+instr.f32 = { const: 0x43 };
+instr.f64 = { const: 0x44 };
+
+const valtype = {
+  i32: 0x7f,
+  i64: 0x7e,
+  f32: 0x7d,
+  f64: 0x7c,
+};
+
+function testExtractedExamples(grammarSource) {
+  const grammar = ohm.grammar(grammarSource);
+  for (const ex of extractExamples(grammarSource)) {
+    const result = grammar.match(ex.example, ex.rule);
+    assert.strictEqual(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
+  }
+}
+
+function loadMod(bytes) {
+  const mod = new WebAssembly.Module(bytes);
+  return new WebAssembly.Instance(mod).exports;
+}
+
 export {
   SECTION_ID_CODE,
   SECTION_ID_EXPORT,
@@ -155,14 +196,18 @@ export {
   i32,
   instr,
   int32ToBytes,
+  loadMod,
   magic,
+  makeTestFn,
   module,
   name,
   section,
   stringToBytes,
+  testExtractedExamples,
   typeidx,
   typesec,
   u32,
+  valtype,
   vec,
   version,
 };

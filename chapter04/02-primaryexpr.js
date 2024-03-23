@@ -1,6 +1,5 @@
-import { setup } from '../book.js';
-
-const { test, assert, ohm } = setup('chapter04');
+import assert from 'node:assert';
+import * as ohm from 'ohm-js';
 
 import {
   code,
@@ -13,16 +12,18 @@ import {
   functype,
   i32,
   instr,
+  loadMod,
+  makeTestFn,
   module,
   testExtractedExamples,
   typeidx,
   typesec,
   u32,
   valtype,
-  vec,
 } from './chapter03.js';
 
-// mark(11[12:22],11[28:38],13:14)
+const test = makeTestFn(import.meta.url);
+
 const grammarDef = `
   Wafer {
     Main = Statement* Expr
@@ -56,5 +57,3 @@ const grammarDef = `
 `;
 
 test('Extracted examples', () => testExtractedExamples(grammarDef));
-
-test.run();

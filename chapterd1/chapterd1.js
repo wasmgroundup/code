@@ -1,6 +1,23 @@
-import { setup } from '../book.js';
+import assert from 'node:assert';
 
-const { test, assert } = setup('chapterD1');
+import {
+  code,
+  codesec,
+  export_,
+  exportdesc,
+  exportsec,
+  func,
+  funcsec,
+  functype,
+  instr,
+  makeTestFn,
+  module,
+  typeidx,
+  typesec,
+  valtype,
+} from './chapter02.js';
+
+const test = makeTestFn(import.meta.url);
 
 const SEVEN_BIT_MASK_BIG_INT = 0b01111111n;
 const CONTINUATION_BIT = 0b10000000;
@@ -46,41 +63,25 @@ function i32(v) {
   return r;
 }
 
-import {
-  code,
-  codesec,
-  export_,
-  exportdesc,
-  exportsec,
-  func,
-  funcsec,
-  functype,
-  instr,
-  module,
-  typeidx,
-  typesec,
-} from './chapter01.js';
+instr.i64 ??= {};
+instr.i64.const = 0x42;
 
-const I64 = 0x7e;
-const I64_CONST = 0x42;
+async function buildI32Body(v) {
+  const mod = module([
+    typesec([functype([], [valtype.i64])]),
+    funcsec([typeidx(0)]),
+    exportsec([export_('main', exportdesc.func(0))]),
+    codesec([code(func([], [[instr.i64.const, i32(v)], instr.end]))]),
+  ]);
+  const bin = Uint8Array.from(mod.flat(Infinity));
+
+  return (await WebAssembly.instantiate(bin)).instance.exports.main();
+}
 
 test('test i32 encoder', async () => {
-  async function build(v) {
-    const mod = module([
-      typesec([functype([], [I64])]),
-      funcsec([typeidx(0)]),
-      exportsec([export_('main', exportdesc.func(0))]),
-      codesec([code(func([], [I64_CONST, i32(v), instr.end]))]),
-    ]);
-    const bin = Uint8Array.from(mod.flat(Infinity));
-
-    return (await WebAssembly.instantiate(bin)).instance.exports.main();
-  }
-
   async function test(v) {
-    const r = await build(v);
-
-    assert.is(v, r);
+    const r = await buildI32Body(v);
+    assert.strictEqual(v, r);
   }
 
   for (let i = 0n; i < 62n; i++) {
@@ -95,46 +96,47 @@ test('test i32 encoder', async () => {
   }
 });
 
-const I64_ADD = 0x7c;
-const INSTR_NOP = 0x01;
+async function buildU32Body(bodyLenBytes) {
+  if (bodyLenBytes < 2) {
+    throw new Error("Can't generate body that small");
+  }
+
+  let bytesRemaining = bodyLenBytes - 3;
+  const adds = [];
+  const oneAdd = [[instr.i64.const, 1], instr.i64.add];
+  // 3 bytes per increment
+  for (; bytesRemaining >= 3; bytesRemaining -= 3) {
+    adds.push(oneAdd);
+  }
+
+  // Add nops to match expected body length
+  for (let i = 0; i < bytesRemaining; i++) {
+    adds.push(instr.nop);
+  }
+
+  const mod = module([
+    typesec([functype([], [valtype.i64])]),
+    funcsec([typeidx(0)]),
+    exportsec([export_('main', exportdesc.func(0))]),
+    codesec([code(func([], [[instr.i64.const, 0], adds, instr.end]))]),
+  ]);
+  const bin = Uint8Array.from(mod.flat(Infinity));
+
+  return (await WebAssembly.instantiate(bin)).instance.exports.main();
+}
+
+instr.i64.add = 0x7c;
+instr.nop = 0x01;
 
 test('test u32 encoder', async () => {
-  async function build(bodyLenBytes) {
-    if (bodyLenBytes < 2) {
-      throw new Error("Can't generate body that small");
-    }
-
-    let bytesRemaining = bodyLenBytes - 3;
-    const adds = [];
-    const oneAdd = [I64_CONST, 1, I64_ADD];
-    // 3 bytes per increment
-    for (; bytesRemaining >= 3; bytesRemaining -= 3) {
-      adds.push(oneAdd);
-    }
-
-    // Add nops to match expected body length
-    for (let i = 0; i < bytesRemaining; i++) {
-      adds.push(INSTR_NOP);
-    }
-
-    const mod = module([
-      typesec([functype([], [I64])]),
-      funcsec([typeidx(0)]),
-      exportsec([export_('main', exportdesc.func(0))]),
-      codesec([code(func([], [I64_CONST, 0, adds, instr.end]))]),
-    ]);
-    const bin = Uint8Array.from(mod.flat(Infinity));
-
-    return (await WebAssembly.instantiate(bin)).instance.exports.main();
-  }
   function getIncrResultForBytes(len) {
     return BigInt(Math.floor((len - 3) / 3));
   }
 
   async function test(bodyLenBytes) {
     const expected = getIncrResultForBytes(bodyLenBytes);
-    const result = await build(bodyLenBytes);
-    assert.is(expected, result);
+    const result = await buildU32Body(bodyLenBytes);
+    assert.strictEqual(expected, result);
   }
 
   await test(3);
@@ -143,5 +145,3 @@ test('test u32 encoder', async () => {
   await test(2 ** 14);
   await test(2 ** 21);
 });
-
-test.run();

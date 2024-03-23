@@ -1,6 +1,25 @@
-import { setup } from '../book.js';
+import assert from 'node:assert';
+import * as ohm from 'ohm-js';
+import { extractExamples } from 'ohm-js/extras';
 
-const { test, assert, ohm } = setup('chapter02');
+import {
+  code,
+  codesec,
+  export_,
+  exportdesc,
+  exportsec,
+  func,
+  funcsec,
+  functype,
+  i32,
+  instr,
+  makeTestFn,
+  module,
+  typeidx,
+  typesec,
+} from './chapter01.js';
+
+const test = makeTestFn(import.meta.url);
 
 const grammarDef = `
   Wafer {
@@ -14,7 +33,5 @@ const wafer = ohm.grammar(grammarDef);
 test('Wafer', () => {
   assert.ok(wafer.match('42').succeeded());
   assert.ok(wafer.match('1').succeeded());
-  assert.not(wafer.match('abc').succeeded());
+  assert.ok(wafer.match('abc').failed());
 });
-
-test.run();

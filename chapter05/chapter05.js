@@ -1,4 +1,5 @@
 import {
+  // buildSymbolTable,
   code,
   codesec,
   export_,
@@ -10,15 +11,25 @@ import {
   functype,
   i32,
   instr,
+  loadMod,
+  localidx,
+  locals,
+  makeTestFn,
   module,
   name,
+  resolveSymbol,
   section,
+  testExtractedExamples,
   typeidx,
   typesec,
   u32,
   valtype,
   vec,
 } from './chapter04.js';
+
+const test = makeTestFn(import.meta.url);
+
+instr.call = 0x10;
 
 instr.global = {};
 instr.global.get = 0x23;
@@ -50,8 +61,6 @@ function globalsec(globs) {
   return section(SECTION_ID_GLOBAL, vec(globs));
 }
 
-instr.call = 0x10;
-
 const SECTION_ID_IMPORT = 2;
 
 // mod:name  nm:name  d:importdesc
@@ -69,8 +78,21 @@ const importdesc = {
   func(x) {
     return [0x00, funcidx(x)];
   },
+  global(globaltype) {
+    return [0x03, globaltype];
+  },
 };
 
+const SECTION_ID_START = 8;
+
+const start = funcidx;
+
+// st:start
+function startsec(st) {
+  return section(SECTION_ID_START, st);
+}
+
 export * from './chapter04.js';
+export { SECTION_ID_START, start, startsec };
 export { global, globalidx, globalsec, globaltype, mut, SECTION_ID_GLOBAL };
 export { import_, importdesc, importsec, SECTION_ID_IMPORT };

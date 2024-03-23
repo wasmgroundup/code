@@ -1,6 +1,4 @@
-import { setup } from '../book.js';
-
-const { test, assert } = setup('chapter06');
+import assert from 'node:assert';
 
 import {
   code,
@@ -15,12 +13,15 @@ import {
   instr,
   localidx,
   locals,
+  makeTestFn,
   module,
   typeidx,
   typesec,
   u32,
   valtype,
 } from './chapter05.js';
+
+const test = makeTestFn(import.meta.url);
 
 // a == 0
 instr.i32.eqz = 0x45;
@@ -120,62 +121,62 @@ test('compileCompAndBoolOps works', async () => {
   const FALSE = 0;
 
   // (1 == 2) == false
-  assert.is(eq(1, 2), FALSE);
+  assert.strictEqual(eq(1, 2), FALSE);
   // (2 == 2) == true
-  assert.is(eq(2, 2), TRUE);
+  assert.strictEqual(eq(2, 2), TRUE);
   // (1 != 2) == true
-  assert.is(ne(1, 2), TRUE);
+  assert.strictEqual(ne(1, 2), TRUE);
   // (3 != 3) == false
-  assert.is(ne(3, 3), FALSE);
+  assert.strictEqual(ne(3, 3), FALSE);
   // (1 < 2) == true
-  assert.is(lt(1, 2), TRUE);
+  assert.strictEqual(lt(1, 2), TRUE);
   // (2 < 2) == false
-  assert.is(lt(2, 2), FALSE);
+  assert.strictEqual(lt(2, 2), FALSE);
   // (3 < 2) == false
-  assert.is(lt(3, 2), FALSE);
+  assert.strictEqual(lt(3, 2), FALSE);
   // (1 > 2) == false
-  assert.is(gt(1, 2), FALSE);
+  assert.strictEqual(gt(1, 2), FALSE);
   // (2 > 2) == false
-  assert.is(gt(2, 2), FALSE);
+  assert.strictEqual(gt(2, 2), FALSE);
   // (3 > 2) == true
-  assert.is(gt(3, 2), TRUE);
+  assert.strictEqual(gt(3, 2), TRUE);
   // (1 <= 2) == true
-  assert.is(le(1, 2), TRUE);
+  assert.strictEqual(le(1, 2), TRUE);
   // (2 <= 2) == true
-  assert.is(le(2, 2), TRUE);
+  assert.strictEqual(le(2, 2), TRUE);
   // (3 <= 2) == false
-  assert.is(le(3, 2), FALSE);
+  assert.strictEqual(le(3, 2), FALSE);
   // (1 >= 2) == false
-  assert.is(ge(1, 2), FALSE);
+  assert.strictEqual(ge(1, 2), FALSE);
   // (2 >= 2) == true
-  assert.is(ge(2, 2), TRUE);
+  assert.strictEqual(ge(2, 2), TRUE);
   // (3 >= 2) == true
-  assert.is(ge(3, 2), TRUE);
+  assert.strictEqual(ge(3, 2), TRUE);
   // (true and true) == true
-  assert.is(and(1, 1), TRUE);
+  assert.strictEqual(and(1, 1), TRUE);
   // (false and false) == false
-  assert.is(and(0, 0), FALSE);
+  assert.strictEqual(and(0, 0), FALSE);
   // (false and true) == false
-  assert.is(and(0, 1), FALSE);
+  assert.strictEqual(and(0, 1), FALSE);
   // (true and false) == false
-  assert.is(and(1, 0), FALSE);
+  assert.strictEqual(and(1, 0), FALSE);
   // (true or true) == true
-  assert.is(or(1, 1), TRUE);
+  assert.strictEqual(or(1, 1), TRUE);
   // (false or false) == false
-  assert.is(or(0, 0), FALSE);
+  assert.strictEqual(or(0, 0), FALSE);
   // (false or true) == true
-  assert.is(or(0, 1), TRUE);
+  assert.strictEqual(or(0, 1), TRUE);
   // (true or false) == true
-  assert.is(or(1, 0), TRUE);
+  assert.strictEqual(or(1, 0), TRUE);
   // (0 === 0) == true
   // (!false) == true
-  assert.is(eqz(0), TRUE);
+  assert.strictEqual(eqz(0), TRUE);
   // (1 === 0) == false
   // (!true) == false
-  assert.is(eqz(1), FALSE);
+  assert.strictEqual(eqz(1), FALSE);
   // (2 === 0) == true
   // (!true) == true
-  assert.is(eqz(2), FALSE);
+  assert.strictEqual(eqz(2), FALSE);
 });
 
 const labelidx = u32;
@@ -224,9 +225,9 @@ test('compileIfVoid works', async () => {
       exports: { main },
     },
   } = await WebAssembly.instantiate(compileIfVoid());
-  assert.is(main(0), 11);
-  assert.is(main(1), 22);
-  assert.is(main(2), 22);
+  assert.strictEqual(main(0), 11);
+  assert.strictEqual(main(1), 22);
+  assert.strictEqual(main(2), 22);
 });
 
 function compileIfReturn() {
@@ -262,9 +263,9 @@ test('compileIfReturn works', async () => {
       exports: { main },
     },
   } = await WebAssembly.instantiate(compileIfReturn());
-  assert.is(main(0), 11);
-  assert.is(main(1), 22);
-  assert.is(main(2), 22);
+  assert.strictEqual(main(0), 11);
+  assert.strictEqual(main(1), 22);
+  assert.strictEqual(main(2), 22);
 });
 
 instr.block = 0x02;
@@ -341,10 +342,8 @@ test('compileWhile works', async () => {
       exports: { main },
     },
   } = await WebAssembly.instantiate(compileWhile());
-  assert.is(main(10), 10);
+  assert.strictEqual(main(10), 10);
 });
 
 export * from './chapter05.js';
 export { blocktype };
-
-test.run();

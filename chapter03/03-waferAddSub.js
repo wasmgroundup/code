@@ -1,13 +1,15 @@
-import { setup } from '../book.js';
+import assert from 'node:assert';
+import * as ohm from 'ohm-js';
 
-const { test, assert, ohm } = setup('chapter03');
+import { i32, instr, makeTestFn, testExtractedExamples } from './chapter02.js';
 
-import { i32, instr, testExtractedExamples } from './chapter02.js';
+const test = makeTestFn(import.meta.url);
 
 const grammarDef = `
   Wafer {
     Main = Expr
     Expr = number (op number)*
+
     op = "+" | "-"
     number = digit+
 
@@ -18,5 +20,3 @@ const grammarDef = `
 `;
 
 test('Extracted examples', () => testExtractedExamples(grammarDef));
-
-test.run();

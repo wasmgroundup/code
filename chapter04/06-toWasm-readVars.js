@@ -1,6 +1,5 @@
-import { setup } from '../book.js';
-
-const { test, assert, ohm } = setup('chapter04');
+import assert from 'node:assert';
+import * as ohm from 'ohm-js';
 
 import {
   code,
@@ -13,16 +12,18 @@ import {
   functype,
   i32,
   instr,
+  loadMod,
+  makeTestFn,
   module,
   testExtractedExamples,
   typeidx,
   typesec,
   u32,
   valtype,
-  vec,
 } from './chapter03.js';
 
-// mark(13:14)
+const test = makeTestFn(import.meta.url);
+
 const grammarDef = `
   Wafer {
     Main = Statement* Expr
@@ -78,11 +79,11 @@ function compileLocals() {
         func(
           [locals(1, valtype.i32)],
           [
-            [instr.i32.const, i32(1)],
+            [instr.i32.const, i32(42)],
             [instr.local.set, localidx(1)],
             [instr.local.get, localidx(0)],
             [instr.local.get, localidx(1)],
-            instr.i32.sub,
+            instr.i32.add,
             instr.end,
           ]
         )
@@ -93,70 +94,60 @@ function compileLocals() {
   return Uint8Array.from(mod.flat(Infinity));
 }
 
-test('compileLocals', async () => {
-  const { instance } = await WebAssembly.instantiate(compileLocals());
-
-  assert.is(instance.exports.f1(10), 9);
+test('compileLocals', () => {
+  assert.strictEqual(loadMod(compileLocals()).f1(10), 52);
 });
 
-// mark(6:8)
-const wafer = ohm.grammar(grammarDef);
-
-function localVars(matchResult) {
-  const tempSemantics = wafer.createSemantics();
-  tempSemantics.addOperation('localVars', {
+function buildSymbolTable(grammar, matchResult) {
+  const tempSemantics = grammar.createSemantics();
+  const symbols = new Map();
+  symbols.set('main', new Map());
+  tempSemantics.addOperation('buildSymbolTable', {
     _default(...children) {
-      return children.flatMap((c) => c.localVars());
+      return children.forEach((c) => c.buildSymbolTable());
     },
     LetStatement(_let, id, _eq, _expr, _) {
       const name = id.sourceString;
-      // Return a list of pairs of [variableName, variableInfo].
-      return [[name, { interval: id.source }]];
+      const idx = symbols.get('main').size;
+      const info = { name, idx, what: 'local' };
+      symbols.get('main').set(name, info);
     },
   });
-  return tempSemantics(matchResult).localVars();
+  tempSemantics(matchResult).buildSymbolTable();
+  return symbols;
 }
 
-test('localVars', () => {
-  const varName = (pair) => pair[0];
-  const getLocalVarNames = (str) => localVars(wafer.match(str)).map(varName);
+function resolveSymbol(identNode, locals) {
+  const identName = identNode.sourceString;
+  if (locals.has(identName)) {
+    return locals.get(identName);
+  }
+  throw new Error(`Error: undeclared identifier '${identName}'`);
+}
 
-  assert.equal(getLocalVarNames('42'), []);
-  assert.equal(getLocalVarNames('let x = 0; 42'), ['x']);
-  assert.equal(getLocalVarNames('let x = 0; let y = 1; 42'), ['x', 'y']);
+const wafer = ohm.grammar(grammarDef);
+
+test('symbol table', () => {
+  const getVarNames = (str) => {
+    const symbols = buildSymbolTable(wafer, wafer.match(str));
+    return Array.from(symbols.get('main').keys());
+  };
+
+  assert.deepEqual(getVarNames('42'), []);
+  assert.deepEqual(getVarNames('let x = 0; 42'), ['x']);
+  assert.deepEqual(getVarNames('let x = 0; let y = 1; 42'), ['x', 'y']);
+
+  const symbols = buildSymbolTable(
+    wafer,
+    wafer.match('let x = 0; let y = 1; 42')
+  );
+  const localVars = symbols.get('main');
+  assert.strictEqual(resolveSymbol({ sourceString: 'x' }, localVars).idx, 0);
+  assert.strictEqual(resolveSymbol({ sourceString: 'y' }, localVars).idx, 1);
+  assert.throws(() => resolveSymbol({ sourceString: 'z' }, localVars));
 });
 
-function findIndexInLocals(identNode, localsArr) {
-  const identName = identNode.sourceString;
-  const refInterval = identNode.source;
-
-  const idx = localsArr.findIndex(([name]) => identName === name);
-
-  // Ensure that the variable has been declared.
-  if (idx === -1) {
-    const msg =
-      refInterval.getLineAndColumnMessage() +
-      `Error: undeclared identifier '${identName}`;
-    throw new Error(msg);
-  }
-
-  const declInfo = localsArr[idx][1];
-
-  // Ensure that the declaration appears before this usage.
-  if (refInterval.startIdx < declInfo.interval.startIdx) {
-    const msg =
-      refInterval.getLineAndColumnMessage() +
-      `Error: Cannot access '${identName}' before initialization`;
-    throw new Error(msg);
-  }
-
-  return idx;
-}
-
-// mark(13,26)
-function toWasm(matchResult, locals) {
-  const semantics = wafer.createSemantics();
-
+function defineToWasm(semantics, localVars) {
   semantics.addOperation('toWasm', {
     Main(statementIter, expr) {
       return [
@@ -166,8 +157,8 @@ function toWasm(matchResult, locals) {
       ];
     },
     LetStatement(_let, ident, _eq, expr, _) {
-      const idx = findIndexInLocals(ident, locals);
-      return [expr.toWasm(), instr.local.set, idx];
+      const info = resolveSymbol(ident, localVars);
+      return [expr.toWasm(), instr.local.set, localidx(info.idx)];
     },
     Expr(num, iterOps, iterOperands) {
       const result = [num.toWasm()];
@@ -179,8 +170,8 @@ function toWasm(matchResult, locals) {
       return result;
     },
     PrimaryExpr_var(ident) {
-      const idx = findIndexInLocals(ident, locals);
-      return [instr.local.get, idx];
+      const info = resolveSymbol(ident, localVars);
+      return [instr.local.get, localidx(info.idx)];
     },
     op(char) {
       return [char.sourceString === '+' ? instr.i32.add : instr.i32.sub];
@@ -190,36 +181,32 @@ function toWasm(matchResult, locals) {
       return [instr.i32.const, ...i32(num)];
     },
   });
-  return semantics(matchResult).toWasm();
 }
 
-// mark(15:20)
-test('toWasm bytecodes - locals & assignment', () => {
-  const getWasmBytecode = (input) => {
-    const matchResult = wafer.match(input);
-    const locals = localVars(matchResult);
-    return toWasm(matchResult, locals).flat(Infinity);
-  };
+function toWasmFlat(input) {
+  const matchResult = wafer.match(input);
+  const symbols = buildSymbolTable(wafer, matchResult);
+  const semantics = wafer.createSemantics();
+  defineToWasm(semantics, symbols.get('main'));
+  return semantics(matchResult).toWasm().flat(Infinity);
+}
 
-  assert.equal(getWasmBytecode('42'), [instr.i32.const, 42, instr.end]);
-  assert.equal(
-    getWasmBytecode('let x = 0; 42'),
+test('toWasm bytecodes - locals & assignment', () => {
+  assert.deepEqual(toWasmFlat('42'), [instr.i32.const, 42, instr.end]);
+  assert.deepEqual(
+    toWasmFlat('let x = 10; 42'),
     [
-      [instr.i32.const, 0],
-      [instr.local.set, 0],
+      [instr.i32.const, 10, instr.local.set, 0], // let x = 10;
       [instr.i32.const, 42],
       instr.end,
     ].flat()
   );
-  assert.equal(
-    getWasmBytecode('let x = 0; x'),
+  assert.deepEqual(
+    toWasmFlat('let x = 10; x'),
     [
-      [instr.i32.const, 0],
-      [instr.local.set, 0],
-      [instr.local.get, 0],
+      [instr.i32.const, 10, instr.local.set, 0], // let x = 10;
+      [instr.local.get, 0], // x
       instr.end,
     ].flat()
   );
 });
-
-test.run();

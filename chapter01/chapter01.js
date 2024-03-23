@@ -1,3 +1,15 @@
+import assert from 'node:assert';
+import process from 'node:process';
+import { default as nodeTest } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+function makeTestFn(url) {
+  if (process.env.NODE_TEST_CONTEXT && process.argv[1] === fileURLToPath(url)) {
+    return (...args) => nodeTest(...args); // register the test normally
+  }
+  return () => {}; // ignore the test
+}
+
 function stringToBytes(s) {
   const bytes = new TextEncoder().encode(s);
   return Array.from(bytes);
@@ -152,6 +164,7 @@ export {
   instr,
   int32ToBytes,
   magic,
+  makeTestFn,
   module,
   name,
   section,

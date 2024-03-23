@@ -1,3 +1,7 @@
+import assert from 'node:assert';
+import * as ohm from 'ohm-js';
+import { extractExamples } from 'ohm-js/extras';
+
 import {
   code,
   codesec,
@@ -7,12 +11,15 @@ import {
   func,
   funcsec,
   functype,
+  i32,
   instr,
+  makeTestFn,
   module,
   typeidx,
   typesec,
-  i32,
 } from './chapter01.js';
+
+const test = makeTestFn(import.meta.url);
 
 instr.i32 = { const: 0x41 };
 instr.i64 = { const: 0x42 };
@@ -26,17 +33,18 @@ const valtype = {
   f64: 0x7c,
 };
 
-import * as ohm from 'ohm-js';
-import { extractExamples } from 'ohm-js/extras';
-import * as assert from 'uvu/assert';
-
 function testExtractedExamples(grammarSource) {
   const grammar = ohm.grammar(grammarSource);
   for (const ex of extractExamples(grammarSource)) {
     const result = grammar.match(ex.example, ex.rule);
-    assert.is(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
+    assert.strictEqual(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
   }
 }
 
+function loadMod(bytes) {
+  const mod = new WebAssembly.Module(bytes);
+  return new WebAssembly.Instance(mod).exports;
+}
+
 export * from './chapter01.js';
-export { testExtractedExamples, valtype };
+export { loadMod, testExtractedExamples, valtype };

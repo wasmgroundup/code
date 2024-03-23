@@ -1,5 +1,22 @@
-import { setup } from '../book.js';
+import assert from 'node:assert';
+import * as ohm from 'ohm-js';
+import { extractExamples } from 'ohm-js/extras';
 
-const { test, assert, ohm } = setup('chapter02');
+import {
+  code,
+  codesec,
+  export_,
+  exportdesc,
+  exportsec,
+  func,
+  funcsec,
+  functype,
+  i32,
+  instr,
+  makeTestFn,
+  module,
+  typeidx,
+  typesec,
+} from './chapter01.js';
 
-test.run();
+const test = makeTestFn(import.meta.url);

@@ -1,12 +1,31 @@
-import { setup } from '../book.js';
+import assert from 'node:assert';
+import * as ohm from 'ohm-js';
+import { extractExamples } from 'ohm-js/extras';
 
-const { test, assert, ohm, extractExamples } = setup('chapter02');
+import {
+  code,
+  codesec,
+  export_,
+  exportdesc,
+  exportsec,
+  func,
+  funcsec,
+  functype,
+  i32,
+  instr,
+  makeTestFn,
+  module,
+  typeidx,
+  typesec,
+} from './chapter01.js';
+
+const test = makeTestFn(import.meta.url);
 
 function testExtractedExamples(grammarSource) {
   const grammar = ohm.grammar(grammarSource);
   for (const ex of extractExamples(grammarSource)) {
     const result = grammar.match(ex.example, ex.rule);
-    assert.is(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
+    assert.strictEqual(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
   }
 }
 
@@ -43,5 +62,3 @@ test('jsValue', () => {
   assert.equal(getJsValue('0'), 0);
   assert.equal(getJsValue('99'), 99);
 });
-
-test.run();

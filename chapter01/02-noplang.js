@@ -1,10 +1,20 @@
-import { setup } from '../book.js';
+import assert from 'node:assert';
+import process from 'node:process';
+import { default as nodeTest } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-const { test, assert } = setup('chapter01');
+function makeTestFn(url) {
+  if (process.env.NODE_TEST_CONTEXT && process.argv[1] === fileURLToPath(url)) {
+    return (...args) => nodeTest(...args); // register the test normally
+  }
+  return () => {}; // ignore the test
+}
+
+const test = makeTestFn(import.meta.url);
 
 test('compileVoidLang works for empty string', () => {
   const bytes = compileVoidLang('');
-  assert.is(ArrayBuffer.isView(bytes), true);
+  assert.strictEqual(ArrayBuffer.isView(bytes), true);
   assert.throws(() => compileVoidLang('42'));
 });
 
@@ -13,8 +23,8 @@ test('compileVoidLang result compiles to a WebAssembly object', async () => {
     compileVoidLang('')
   );
 
-  assert.is(instance instanceof WebAssembly.Instance, true);
-  assert.is(module instanceof WebAssembly.Module, true);
+  assert.strictEqual(instance instanceof WebAssembly.Instance, true);
+  assert.strictEqual(module instanceof WebAssembly.Module, true);
 });
 
 function stringToBytes(s) {
@@ -105,8 +115,8 @@ test('compileNopLang compiles to a wasm module', async () => {
     compileNopLang('')
   );
 
-  assert.is(instance instanceof WebAssembly.Instance, true);
-  assert.is(module instanceof WebAssembly.Module, true);
+  assert.strictEqual(instance instanceof WebAssembly.Instance, true);
+  assert.strictEqual(module instanceof WebAssembly.Module, true);
 });
 
 const SECTION_ID_EXPORT = 7;
@@ -148,5 +158,3 @@ function compileNopLang(source) {
   ]);
   return Uint8Array.from(mod.flat(Infinity));
 }
-
-test.run();

@@ -11,12 +11,15 @@ import {
   instr,
   localidx,
   locals,
+  makeTestFn,
   module,
   typeidx,
   typesec,
   u32,
   valtype,
 } from './chapter05.js';
+
+const test = makeTestFn(import.meta.url);
 
 // a == 0
 instr.i32.eqz = 0x45;

@@ -1,6 +1,6 @@
-import { setup } from '../book.js';
-
-const { test, assert, ohm, extractExamples } = setup('chapter02');
+import assert from 'node:assert';
+import * as ohm from 'ohm-js';
+import { extractExamples } from 'ohm-js/extras';
 
 import {
   code,
@@ -11,12 +11,15 @@ import {
   func,
   funcsec,
   functype,
+  i32,
   instr,
+  makeTestFn,
   module,
   typeidx,
   typesec,
-  i32,
 } from './chapter01.js';
+
+const test = makeTestFn(import.meta.url);
 
 instr.i32 = { const: 0x41 };
 instr.i64 = { const: 0x42 };
@@ -34,7 +37,7 @@ function testExtractedExamples(grammarSource) {
   const grammar = ohm.grammar(grammarSource);
   for (const ex of extractExamples(grammarSource)) {
     const result = grammar.match(ex.example, ex.rule);
-    assert.is(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
+    assert.strictEqual(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
   }
 }
 
@@ -72,8 +75,8 @@ test('jsValue', () => {
   assert.equal(getJsValue('99'), 99);
 });
 
-function compile(grammar, source) {
-  const matchResult = grammar.match(source);
+function compile(source) {
+  const matchResult = wafer.match(source);
   if (!matchResult.succeeded()) {
     throw new Error(matchResult.message);
   }
@@ -97,15 +100,13 @@ semantics.addOperation('toWasm', {
   },
 });
 
-async function compileAndEval(grammar, input) {
-  const { instance } = await WebAssembly.instantiate(compile(grammar, input));
-  return instance.exports.main();
+function loadMod(bytes) {
+  const mod = new WebAssembly.Module(bytes);
+  return new WebAssembly.Instance(mod).exports;
 }
 
 test('toWasm', async () => {
-  assert.equal(await compileAndEval(wafer, '42'), 42);
-  assert.equal(await compileAndEval(wafer, '0'), 0);
-  assert.equal(await compileAndEval(wafer, '31'), 31);
+  assert.equal(loadMod(compile('42')).main(), 42);
+  assert.equal(loadMod(compile('0')).main(), 0);
+  assert.equal(loadMod(compile('31')).main(), 31);
 });
-
-test.run();

@@ -1,6 +1,16 @@
+import assert from 'node:assert';
 import * as ohm from 'ohm-js';
 import { extractExamples } from 'ohm-js/extras';
-import * as assert from 'uvu/assert';
+import process from 'node:process';
+import nodeTest from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+function makeTestFn(url) {
+  if (process.env.NODE_TEST_CONTEXT && process.argv[1] === fileURLToPath(url)) {
+    return (...args) => nodeTest(...args); // register the test normally
+  }
+  return () => {}; // ignore the test
+}
 
 function stringToBytes(s) {
   const bytes = new TextEncoder().encode(s);
@@ -142,6 +152,8 @@ function i32(v) {
   return r;
 }
 
+makeTestFn(import.meta.url);
+
 instr.i32 = { const: 0x41 };
 instr.i64 = { const: 0x42 };
 instr.f32 = { const: 0x43 };
@@ -158,8 +170,13 @@ function testExtractedExamples(grammarSource) {
   const grammar = ohm.grammar(grammarSource);
   for (const ex of extractExamples(grammarSource)) {
     const result = grammar.match(ex.example, ex.rule);
-    assert.is(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
+    assert.strictEqual(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
   }
+}
+
+function loadMod(bytes) {
+  const mod = new WebAssembly.Module(bytes);
+  return new WebAssembly.Instance(mod).exports;
 }
 
 export {
@@ -179,7 +196,9 @@ export {
   i32,
   instr,
   int32ToBytes,
+  loadMod,
   magic,
+  makeTestFn,
   module,
   name,
   section,

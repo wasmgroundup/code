@@ -1,6 +1,5 @@
-import { setup } from '../book.js';
-
-const { test, assert, ohm } = setup('chapter04');
+import assert from 'node:assert';
+import * as ohm from 'ohm-js';
 
 import {
   code,
@@ -13,28 +12,31 @@ import {
   functype,
   i32,
   instr,
+  loadMod,
+  makeTestFn,
   module,
   testExtractedExamples,
   typeidx,
   typesec,
   u32,
   valtype,
-  vec,
 } from './chapter03.js';
 
-// mark(6:10)
+const test = makeTestFn(import.meta.url);
+
 const grammarDef = `
   Wafer {
     Main = Expr
-    Expr = number
+    Expr = number (op number)*
+
+    op = "+" | "-"
+    number = digit+
 
     //+ "x", "élan", "_", "_99"
     //- "1", "$nope"
     identifier = identStart identPart*
     identStart = letter | "_"
     identPart = letter | "_" | digit
-
-    number = digit+
 
     // Examples:
     //+ "42", "1"
@@ -43,5 +45,3 @@ const grammarDef = `
 `;
 
 test('Extracted examples', () => testExtractedExamples(grammarDef));
-
-test.run();

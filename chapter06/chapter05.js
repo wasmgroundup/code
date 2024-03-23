@@ -1,6 +1,16 @@
+import assert from 'node:assert';
 import * as ohm from 'ohm-js';
 import { extractExamples } from 'ohm-js/extras';
-import * as assert from 'uvu/assert';
+import process from 'node:process';
+import nodeTest from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+function makeTestFn(url) {
+  if (process.env.NODE_TEST_CONTEXT && process.argv[1] === fileURLToPath(url)) {
+    return (...args) => nodeTest(...args); // register the test normally
+  }
+  return () => {}; // ignore the test
+}
 
 function stringToBytes(s) {
   const bytes = new TextEncoder().encode(s);
@@ -142,6 +152,8 @@ function i32(v) {
   return r;
 }
 
+makeTestFn(import.meta.url);
+
 instr.i32 = { const: 0x41 };
 instr.i64 = { const: 0x42 };
 instr.f32 = { const: 0x43 };
@@ -158,12 +170,21 @@ function testExtractedExamples(grammarSource) {
   const grammar = ohm.grammar(grammarSource);
   for (const ex of extractExamples(grammarSource)) {
     const result = grammar.match(ex.example, ex.rule);
-    assert.is(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
+    assert.strictEqual(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
   }
 }
 
+function loadMod(bytes) {
+  const mod = new WebAssembly.Module(bytes);
+  return new WebAssembly.Instance(mod).exports;
+}
+
+makeTestFn(import.meta.url);
+
 instr.i32.add = 0x6a;
 instr.i32.sub = 0x6b;
+
+makeTestFn(import.meta.url);
 
 instr.local = {};
 instr.local.get = 0x20;
@@ -176,7 +197,38 @@ function locals(n, type) {
 
 const localidx = u32;
 
+function buildSymbolTable(grammar, matchResult) {
+  const tempSemantics = grammar.createSemantics();
+  const symbols = new Map();
+  symbols.set('main', new Map());
+  tempSemantics.addOperation('buildSymbolTable', {
+    _default(...children) {
+      return children.forEach((c) => c.buildSymbolTable());
+    },
+    LetStatement(_let, id, _eq, _expr, _) {
+      const name = id.sourceString;
+      const idx = symbols.get('main').size;
+      const info = { name, idx, what: 'local' };
+      symbols.get('main').set(name, info);
+    },
+  });
+  tempSemantics(matchResult).buildSymbolTable();
+  return symbols;
+}
+
+function resolveSymbol(identNode, locals) {
+  const identName = identNode.sourceString;
+  if (locals.has(identName)) {
+    return locals.get(identName);
+  }
+  throw new Error(`Error: undeclared identifier '${identName}'`);
+}
+
 instr.drop = 0x1a;
+
+makeTestFn(import.meta.url);
+
+instr.call = 0x10;
 
 instr.global = {};
 instr.global.get = 0x23;
@@ -208,8 +260,6 @@ function globalsec(globs) {
   return section(SECTION_ID_GLOBAL, vec(globs));
 }
 
-instr.call = 0x10;
-
 const SECTION_ID_IMPORT = 2;
 
 // mod:name  nm:name  d:importdesc
@@ -227,7 +277,19 @@ const importdesc = {
   func(x) {
     return [0x00, funcidx(x)];
   },
+  global(globaltype) {
+    return [0x03, globaltype];
+  },
 };
+
+const SECTION_ID_START = 8;
+
+const start = funcidx;
+
+// st:start
+function startsec(st) {
+  return section(SECTION_ID_START, st);
+}
 
 export {
   SECTION_ID_CODE,
@@ -235,7 +297,9 @@ export {
   SECTION_ID_FUNCTION,
   SECTION_ID_GLOBAL,
   SECTION_ID_IMPORT,
+  SECTION_ID_START,
   SECTION_ID_TYPE,
+  buildSymbolTable,
   code,
   codesec,
   export_,
@@ -255,13 +319,18 @@ export {
   importsec,
   instr,
   int32ToBytes,
+  loadMod,
   localidx,
   locals,
   magic,
+  makeTestFn,
   module,
   mut,
   name,
+  resolveSymbol,
   section,
+  start,
+  startsec,
   stringToBytes,
   testExtractedExamples,
   typeidx,

@@ -97,3 +97,52 @@ function compileLocals() {
 test('compileLocals', () => {
   assert.strictEqual(loadMod(compileLocals()).f1(10), 52);
 });
+
+function buildSymbolTable(grammar, matchResult) {
+  const tempSemantics = grammar.createSemantics();
+  const symbols = new Map();
+  symbols.set('main', new Map());
+  tempSemantics.addOperation('buildSymbolTable', {
+    _default(...children) {
+      return children.forEach((c) => c.buildSymbolTable());
+    },
+    LetStatement(_let, id, _eq, _expr, _) {
+      const name = id.sourceString;
+      const idx = symbols.get('main').size;
+      const info = { name, idx, what: 'local' };
+      symbols.get('main').set(name, info);
+    },
+  });
+  tempSemantics(matchResult).buildSymbolTable();
+  return symbols;
+}
+
+function resolveSymbol(identNode, locals) {
+  const identName = identNode.sourceString;
+  if (locals.has(identName)) {
+    return locals.get(identName);
+  }
+  throw new Error(`Error: undeclared identifier '${identName}'`);
+}
+
+const wafer = ohm.grammar(grammarDef);
+
+test('symbol table', () => {
+  const getVarNames = (str) => {
+    const symbols = buildSymbolTable(wafer, wafer.match(str));
+    return Array.from(symbols.get('main').keys());
+  };
+
+  assert.deepEqual(getVarNames('42'), []);
+  assert.deepEqual(getVarNames('let x = 0; 42'), ['x']);
+  assert.deepEqual(getVarNames('let x = 0; let y = 1; 42'), ['x', 'y']);
+
+  const symbols = buildSymbolTable(
+    wafer,
+    wafer.match('let x = 0; let y = 1; 42')
+  );
+  const localVars = symbols.get('main');
+  assert.strictEqual(resolveSymbol({ sourceString: 'x' }, localVars).idx, 0);
+  assert.strictEqual(resolveSymbol({ sourceString: 'y' }, localVars).idx, 1);
+  assert.throws(() => resolveSymbol({ sourceString: 'z' }, localVars));
+});
