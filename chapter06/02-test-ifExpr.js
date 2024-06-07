@@ -2,9 +2,11 @@ import assert from 'node:assert';
 import * as ohm from 'ohm-js';
 
 import {
+  buildModule,
   buildSymbolTable,
   code,
   codesec,
+  defineFunctionDecls,
   export_,
   exportdesc,
   exportsec,
@@ -23,8 +25,9 @@ import {
   testExtractedExamples,
   typeidx,
   typesec,
+  u32,
   valtype,
-} from './chapter04.js';
+} from './chapter05.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -37,11 +40,11 @@ const grammarDef = `
 
     //+ "let x = 3 + 4;", "let distance = 100 + 2;"
     //- "let y;"
-    LetStatement = "let" identifier "=" Expr ";"
+    LetStatement = let identifier "=" Expr ";"
 
     //+ "func zero() { 0 }", "func add(x, y) { x + y }"
     //- "func x", "func x();"
-    FunctionDecl = "func" identifier "(" Params? ")" BlockExpr
+    FunctionDecl = func identifier "(" Params? ")" BlockExpr
 
     Params = identifier ("," identifier)*
 
@@ -59,14 +62,30 @@ const grammarDef = `
     AssignmentExpr = identifier ":=" Expr
 
     PrimaryExpr = number  -- num
+                | CallExpr
                 | identifier  -- var
+                | IfExpr
+
+    CallExpr = identifier "(" Args? ")"
+
+    Args = Expr ("," Expr)*
+
+    //+ "if x { 42 } else { 99 }", "if x { 42 } else if y { 99 } else { 0 }"
+    //- "if x { 42 }"
+    IfExpr = if Expr BlockExpr else (BlockExpr|IfExpr)
 
     op = "+" | "-"
     number = digit+
 
+    keyword = if | else | func | let
+    if = "if" ~identPart
+    else = "else" ~identPart
+    func = "func" ~identPart
+    let = "let" ~identPart
+
     //+ "x", "élan", "_", "_99"
     //- "1", "$nope"
-    identifier = identStart identPart*
+    identifier = ~keyword identStart identPart*
     identStart = letter | "_"
     identPart = identStart | digit
 
@@ -80,74 +99,33 @@ test('extracted examples', () => testExtractedExamples(grammarDef));
 
 const wafer = ohm.grammar(grammarDef);
 
-function compile(source) {
-  const matchResult = wafer.match(source);
-  if (!matchResult.succeeded()) {
-    throw new Error(matchResult.message);
-  }
+instr.if = 0x04;
+instr.else = 0x05;
 
-  const semantics = wafer.createSemantics();
-  const symbols = buildSymbolTable(wafer, matchResult);
-  const localVars = symbols.get('main');
-  defineToWasm(semantics, localVars);
+const blocktype = { empty: 0x40, ...valtype };
 
-  const mainFn = func(
-    [locals(localVars.size, valtype.i32)],
-    semantics(matchResult).toWasm()
-  );
-  const mod = module([
-    typesec([functype([], [valtype.i32])]),
-    funcsec([typeidx(0)]),
-    exportsec([export_('main', exportdesc.func(0))]),
-    codesec([code(mainFn)]),
-  ]);
-  return Uint8Array.from(mod.flat(Infinity));
-}
-
-function buildModule(functionDecls) {
-  const types = functionDecls.map((f) =>
-    functype(f.paramTypes, [f.resultType])
-  );
-  const funcs = functionDecls.map((f, i) => typeidx(i));
-  const codes = functionDecls.map((f) => code(func(f.locals, f.body)));
-  const exports = functionDecls.map((f, i) =>
-    export_(f.name, exportdesc.func(i))
-  );
-
-  const mod = module([
-    typesec(types),
-    funcsec(funcs),
-    exportsec(exports),
-    codesec(codes),
-  ]);
-  return Uint8Array.from(mod.flat(Infinity));
-}
-
-test('buildModule', () => {
+test('if expressions', () => {
   const functionDecls = [
     {
-      name: 'main',
-      paramTypes: [],
-      resultType: valtype.i32,
-      locals: [locals(1, valtype.i32)],
-      body: [instr.i32.const, i32(42), instr.call, funcidx(1), instr.end],
-    },
-    {
-      name: 'backup',
+      name: 'choose',
       paramTypes: [valtype.i32],
       resultType: valtype.i32,
       locals: [],
-      body: [instr.i32.const, i32(43), instr.end],
+      body: [
+        [instr.local.get, localidx(0)], // Load the argument.
+        [instr.if, valtype.i32],
+        [instr.i32.const, i32(42)],
+        instr.else,
+        [instr.i32.const, i32(43)],
+        instr.end, // end if
+        instr.end,
+      ],
     },
   ];
   const exports = loadMod(buildModule(functionDecls));
-  assert.strictEqual(exports.main(), 43);
-  assert.strictEqual(exports.backup(), 43);
+  assert.strictEqual(exports.choose(1), 42);
+  assert.strictEqual(exports.choose(0), 43);
 });
-
-instr.call = 0x10;
-
-test('Extracted examples', () => testExtractedExamples(grammarDef));
 
 function defineToWasm(semantics, symbols) {
   const scopes = [symbols];
@@ -181,6 +159,28 @@ function defineToWasm(semantics, symbols) {
       const info = resolveSymbol(ident, scopes.at(-1));
       return [expr.toWasm(), instr.local.tee, localidx(info.idx)];
     },
+    CallExpr(ident, _lparen, optArgs, _rparen) {
+      const name = ident.sourceString;
+      const funcNames = Array.from(scopes[0].keys());
+      const idx = funcNames.indexOf(name);
+      return [
+        optArgs.children.map((c) => c.toWasm()),
+        [instr.call, funcidx(idx)],
+      ];
+    },
+    Args(exp, _, iterExp) {
+      return [exp, ...iterExp.children].map((c) => c.toWasm());
+    },
+    IfExpr(_if, expr, thenBlock, _else, elseBlock) {
+      return [
+        expr.toWasm(),
+        [instr.if, blocktype.i32],
+        thenBlock.toWasm(),
+        instr.else,
+        elseBlock.toWasm(),
+        instr.end,
+      ];
+    },
     PrimaryExpr_var(ident) {
       const info = resolveSymbol(ident, scopes.at(-1));
       return [instr.local.get, localidx(info.idx)];
@@ -195,35 +195,34 @@ function defineToWasm(semantics, symbols) {
   });
 }
 
-test('toWasm bytecodes - locals & assignment', () => {
-  assert.deepEqual(
-    toWasmFlat('func main() { 42 }'),
-    [[instr.i32.const, 42], instr.end].flat()
-  );
-  assert.deepEqual(
-    toWasmFlat('func main() { let x = 0; 42 }'),
-    [
-      [instr.i32.const, 0],
-      [instr.local.set, 0],
-      [instr.i32.const, 42],
-      instr.end,
-    ].flat()
-  );
-  assert.deepEqual(
-    toWasmFlat('func main() { let x = 0; x }'),
-    [
-      [instr.i32.const, 0],
-      [instr.local.set, 0],
-      [instr.local.get, 0],
-      instr.end,
-    ].flat()
-  );
-});
+function compile(source) {
+  const matchResult = wafer.match(source);
+  if (!matchResult.succeeded()) {
+    throw new Error(matchResult.message);
+  }
 
-function toWasmFlat(input) {
-  const matchResult = wafer.match(input, 'FunctionDecl');
   const symbols = buildSymbolTable(wafer, matchResult);
   const semantics = wafer.createSemantics();
   defineToWasm(semantics, symbols);
-  return semantics(matchResult).toWasm().flat(Infinity);
+  defineFunctionDecls(semantics, symbols);
+
+  const functionDecls = semantics(matchResult).functionDecls();
+  return buildModule(functionDecls);
 }
+
+test('Wafer if expressions', () => {
+  let mod = loadMod(compile('func choose(x) { if x { 42 } else { 43 } }'));
+  assert.strictEqual(mod.choose(1), 42);
+  assert.strictEqual(mod.choose(0), 43);
+
+  mod = loadMod(
+    compile(`
+        func isZero(x) {
+          let result = if x { 0 } else { 1 };
+          result
+        }
+      `)
+  );
+  assert.strictEqual(mod.isZero(1), 0);
+  assert.strictEqual(mod.isZero(0), 1);
+});

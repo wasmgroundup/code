@@ -19,15 +19,11 @@ import {
   locals,
   makeTestFn,
   module,
-  name,
   resolveSymbol,
-  section,
   testExtractedExamples,
   typeidx,
   typesec,
-  u32,
   valtype,
-  vec,
 } from './chapter04.js';
 
 const test = makeTestFn(import.meta.url);

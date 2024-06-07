@@ -1,20 +1,25 @@
 import assert from 'node:assert';
+import * as ohm from 'ohm-js';
 
 import {
   code,
   codesec,
+  defineFunctionDecls,
+  defineToWasm,
   export_,
   exportdesc,
   exportsec,
   func,
+  funcidx,
   funcsec,
   functype,
   i32,
   instr,
-  localidx,
   makeTestFn,
   module,
+  name,
   section,
+  testExtractedExamples,
   typeidx,
   typesec,
   u32,
@@ -24,246 +29,186 @@ import {
 
 const test = makeTestFn(import.meta.url);
 
-const PAGE_SIZE_IN_BYTES = 65536;
+const SECTION_ID_IMPORT = 2;
 
-test('Memory v1 i32Load8U works', () => {
-  const m = new Memory(1);
-  assert.strictEqual(m.i32Load8U(0), 0);
-
-  m.i32Store8(0, 42);
-  assert.strictEqual(m.i32Load8U(0), 42);
-});
-
-class Memory {
-  constructor(pages) {
-    const sizeInBytes = pages * PAGE_SIZE_IN_BYTES;
-
-    this.mem = new ArrayBuffer(sizeInBytes);
-
-    this.memS8 = new Int8Array(this.mem);
-    this.memU8 = new Uint8Array(this.mem);
-    this.memS16 = new Int16Array(this.mem);
-    this.memU16 = new Uint16Array(this.mem);
-    this.memS32 = new Int32Array(this.mem);
-    this.memU32 = new Uint32Array(this.mem);
-  }
-
-  i32Load8U(i) {
-    return this.memU8[i];
-  }
-
-  i32Store8(i, v) {
-    this.memU8[i] = v;
-  }
-
-  i32Load8S(i) {
-    return this.memS8[i];
-  }
-
-  alignedI32Load16U(i) {
-    // shift byte index 1 to the right (divide by 2)
-    // to go from byte index to 16 bit index
-    return this.memU16[i >> 1];
-  }
-
-  alignedI32Store16(i, v) {
-    this.memU16[i >> 1] = v;
-  }
-
-  unalignedI32Load16U(i) {
-    const b1 = this.memU8[i];
-    const b2 = this.memU8[i + 1];
-    return (b2 << 8) | b1;
-  }
-
-  unalignedI32Store16(i, v) {
-    const b1 = v & 0xff;
-    const b2 = (v & 0xff00) >> 8;
-
-    this.memU8[i] = b1;
-    this.memU8[i + 1] = b2;
-  }
-
-  warn(...msg) {
-    console.warn(...msg);
-  }
-
-  static formatInvalidAlignmentError(bitWidthOfT, alignment) {
-    return (
-      `alignment must not be larger than the bit width of t` +
-      ` (${bitWidthOfT}) divided by 8, got ${alignment}`
-    );
-  }
-
-  static formatBadAlignmentHint(alignment, i, offset) {
-    return (
-      `alignment hint but unaligned address, alignment: ` +
-      `${alignment}, address: ${i}, offset: ${offset}, ` +
-      `effective address: ${i + offset}`
-    );
-  }
-
-  i32Load16U(i, alignment, offset) {
-    const effectiveAddress = i + offset;
-    if (alignment === 1) {
-      if ((effectiveAddress & 1) === 0) {
-        return this.alignedI32Load16U(effectiveAddress);
-      } else {
-        this.warn(Memory.formatBadAlignmentHint(alignment, i, offset));
-        return this.unalignedI32Load16U(effectiveAddress);
-      }
-    } else if (alignment === 0) {
-      return this.unalignedI32Load16U(effectiveAddress);
-    } else {
-      throw new Error(Memory.formatInvalidAlignmentError(16, alignment));
-    }
-  }
-
-  i32Store16(i, v, alignment, offset) {
-    const effectiveAddress = i + offset;
-    if (alignment === 1) {
-      if ((effectiveAddress & 1) === 0) {
-        return this.alignedI32Store16(effectiveAddress, v);
-      } else {
-        this.warn(Memory.formatBadAlignmentHint(alignment, i, offset));
-        return this.unalignedI32Store16(effectiveAddress, v);
-      }
-    } else if (alignment === 0) {
-      return this.unalignedI32Store16(effectiveAddress, v);
-    } else {
-      throw new Error(Memory.formatInvalidAlignmentError(16, alignment));
-    }
-  }
+// mod:name  nm:name  d:importdesc
+function import_(mod, nm, d) {
+  return [name(mod), name(nm), d];
 }
 
-test('Memory with ArrayBuffer i32Load8U works', () => {
-  const m = new Memory(1);
-  assert.strictEqual(m.i32Load8U(0), 0);
-
-  m.i32Store8(0, 42);
-  assert.strictEqual(m.i32Load8U(0), 42);
-});
-
-test('Memory i32Load8S works', () => {
-  const m = new Memory(1);
-  m.i32Store8(0, 0xff);
-
-  assert.strictEqual(m.i32Load8U(0), 0xff);
-  assert.strictEqual(m.i32Load8S(0), -1);
-});
-
-test('Typed Array index access', () => {
-  const m = new Memory(1);
-  m.memU8[1] = 1;
-  m.memU8[3] = 2;
-  m.memU8[5] = 3;
-
-  assert.strictEqual(m.memU8[1], 1);
-  assert.strictEqual(m.memU8[3], 2);
-  assert.strictEqual(m.memU8[5], 3);
-
-  assert.strictEqual(m.memU16[1], 512); // 2 << 8
-  assert.strictEqual(m.memU16[3], 0);
-  assert.strictEqual(m.memU16[5], 0);
-
-  assert.strictEqual(m.memU32[1], 768); // 3 << 8
-  assert.strictEqual(m.memU32[3], 0);
-  assert.strictEqual(m.memU32[5], 0);
-});
-
-test('Memory aligned/unaligned access works', () => {
-  const m = new Memory(1);
-
-  m.alignedI32Store16(4, 0xabcd);
-  assert.strictEqual(m.alignedI32Load16U(4), 0xabcd);
-  assert.strictEqual(m.unalignedI32Load16U(4), 0xabcd);
-
-  m.unalignedI32Store16(7, 0x1234);
-  assert.strictEqual(m.unalignedI32Load16U(7), 0x1234);
-  assert.strictEqual(m.memU8[7], 0x34);
-  assert.strictEqual(m.memU8[8], 0x12);
-});
-
-test('Memory aligned hint', () => {
-  const m = new Memory(1);
-
-  // aligned
-  m.i32Store16(4, 0xabcd, 1, 0);
-  assert.strictEqual(m.i32Load16U(4, 1, 0), 0xabcd);
-
-  // unaligned with right hint
-  m.i32Store16(9, 0x1234, 0, 0);
-  assert.strictEqual(m.i32Load16U(9, 0, 0), 0x1234);
-
-  // capture last warning message
-  let msg = null;
-  m.warn = (...m) => {
-    msg = m;
-  };
-
-  // unaligned effective address with wrong hint
-  m.i32Store16(9, 0xfedc, 1, 0);
-  assert.strictEqual(msg[0], Memory.formatBadAlignmentHint(1, 9, 0));
-
-  msg = null;
-  assert.strictEqual(m.i32Load16U(9, 1, 0), 0xfedc);
-  assert.strictEqual(msg[0], Memory.formatBadAlignmentHint(1, 9, 0));
-
-  msg = null;
-  // unaligned effective address (because of offset) with wrong hint
-  m.i32Store16(64, 0x5678, 1, 1);
-  assert.strictEqual(msg[0], Memory.formatBadAlignmentHint(1, 64, 1));
-
-  msg = null;
-  assert.strictEqual(m.i32Load16U(64, 1, 1), 0x5678);
-  assert.strictEqual(msg[0], Memory.formatBadAlignmentHint(1, 64, 1));
-});
-
-const SECTION_ID_MEMORY = 5;
-
-const memidx = u32;
-
-exportdesc.mem = (idx) => [0x02, memidx(idx)];
-
-function mem(memtype) {
-  return memtype;
+// im*:vec(import)
+function importsec(ims) {
+  return section(SECTION_ID_IMPORT, vec(ims));
 }
 
-function memsec(mems) {
-  return section(SECTION_ID_MEMORY, vec(mems));
-}
-
-const limits = {
-  min(n) {
-    return [0x00, u32(n)];
-  },
-  minmax(n, m) {
-    return [0x01, u32(n), u32(m)];
+const importdesc = {
+  // x:typeidx
+  func(x) {
+    return [0x00, typeidx(x)];
   },
 };
 
-instr.i32.load = 0x28;
-instr.i32.store = 0x36;
+function buildModule(importDecls, functionDecls) {
+  const types = [...importDecls, ...functionDecls].map((f) =>
+    functype(f.paramTypes, [f.resultType])
+  );
+  const imports = importDecls.map((f, i) =>
+    import_(f.module, f.name, importdesc.func(i))
+  );
+  const funcs = functionDecls.map((f, i) => typeidx(i + importDecls.length));
+  const codes = functionDecls.map((f) => code(func(f.locals, f.body)));
+  const exports = functionDecls.map((f, i) =>
+    export_(f.name, exportdesc.func(i + importDecls.length))
+  );
 
-function compileWithMemory() {
+  const mod = module([
+    typesec(types),
+    importsec(imports),
+    funcsec(funcs),
+    exportsec(exports),
+    codesec(codes),
+  ]);
+  return Uint8Array.from(mod.flat(Infinity));
+}
+
+test('buildModule with imports', () => {
+  const importDecls = [
+    {
+      module: 'basicMath',
+      name: 'addOne',
+      paramTypes: [valtype.i32],
+      resultType: valtype.i32,
+    },
+  ];
+  const functionDecls = [
+    {
+      name: 'main',
+      paramTypes: [],
+      resultType: valtype.i32,
+      locals: [],
+      body: [instr.i32.const, i32(42), instr.call, funcidx(0), instr.end],
+    },
+  ];
+  const exports = loadMod(buildModule(importDecls, functionDecls), {
+    basicMath: { addOne: (x) => x + 1 },
+  });
+  assert.strictEqual(exports.main(), 43);
+});
+
+function loadMod(bytes, imports) {
+  const mod = new WebAssembly.Module(bytes);
+  return new WebAssembly.Instance(mod, imports).exports;
+}
+
+const SECTION_ID_START = 8;
+
+const start = funcidx;
+
+// st:start
+function startsec(st) {
+  return section(SECTION_ID_START, st);
+}
+
+function compileStartFunction() {
+  const mod = module([
+    typesec([functype([], [])]),
+    funcsec([typeidx(0)]),
+    globalsec([
+      global(globaltype(valtype.i32, mut.var), [
+        [instr.i32.const, i32(0)],
+        instr.end,
+      ]),
+    ]),
+    exportsec([export_('g', exportdesc.global(0))]),
+    startsec(start(0)),
+    codesec([
+      code(
+        func(
+          [],
+          [
+            // g = 42
+            [instr.i32.const, i32(42)],
+            [instr.global.set, globalidx(0)],
+            instr.end,
+          ]
+        )
+      ),
+    ]),
+  ]);
+
+  return Uint8Array.from(mod.flat(Infinity));
+}
+
+test('compileStartFunction works', async () => {
+  const { instance } = await WebAssembly.instantiate(compileStartFunction());
+
+  assert.strictEqual(instance.exports.g.value, 42);
+});
+
+instr.global = {};
+instr.global.get = 0x23;
+instr.global.set = 0x24;
+
+const globalidx = u32;
+
+exportdesc.global = (idx) => [0x03, globalidx(idx)];
+
+const SECTION_ID_GLOBAL = 6;
+
+const mut = {
+  const: 0x00,
+  var: 0x01,
+};
+
+// t:valtype  m:mut
+function globaltype(t, m) {
+  return [t, m];
+}
+
+// gt:globaltype  e:expr
+function global(gt, e) {
+  return [gt, e];
+}
+
+// glob*:vec(global)
+function globalsec(globs) {
+  return section(SECTION_ID_GLOBAL, vec(globs));
+}
+
+function compileGlobals() {
   const mod = module([
     typesec([functype([], [valtype.i32])]),
     funcsec([typeidx(0)]),
-    memsec([mem(limits.min(16))]),
+    globalsec([
+      // V = 10
+      global(globaltype(valtype.i32, mut.var), [
+        instr.i32.const,
+        i32(10),
+        instr.end,
+      ]),
+      // C = 20
+      global(globaltype(valtype.i32, mut.const), [
+        instr.i32.const,
+        i32(20),
+        instr.end,
+      ]),
+    ]),
     exportsec([export_('main', exportdesc.func(0))]),
     codesec([
       code(
         func(
           [],
           [
-            // store 42 @ 8
-            [instr.i32.const, i32(8)],
-            [instr.i32.const, i32(42)],
-            [instr.i32.store, u32(0), u32(0)],
-            // load @ 8
-            [instr.i32.const, i32(8)],
-            [instr.i32.load, u32(0), u32(0)],
-            // end
+            // C + V
+            [instr.global.get, globalidx(0)],
+            [instr.global.get, globalidx(1)],
+            instr.i32.add,
+            // V = 12
+            [instr.i32.const, i32(12)],
+            [instr.global.set, globalidx(0)],
+            // (result of C + V in stack) + V
+            [instr.global.get, globalidx(0)],
+            instr.i32.add,
             instr.end,
           ]
         )
@@ -274,355 +219,197 @@ function compileWithMemory() {
   return Uint8Array.from(mod.flat(Infinity));
 }
 
-test('compileWithMemory works', async () => {
-  const { instance } = await WebAssembly.instantiate(compileWithMemory());
+test('compileGlobals works', async () => {
+  const { instance } = await WebAssembly.instantiate(compileGlobals());
 
   assert.strictEqual(instance.exports.main(), 42);
 });
 
-instr.i32.load8_s = 0x2c;
-instr.i32.load8_u = 0x2d;
-instr.i32.load16_s = 0x2e;
-instr.i32.load16_u = 0x2f;
+const grammarDef = `
+  Wafer {
+    Module = DeclareStatement* FunctionDecl*
 
-function compileStore32Load8() {
-  const mod = module([
-    // (value, memLoc) -> (b4, b3, b2, b1)
-    typesec([
-      functype(
-        [valtype.i32, valtype.i32],
-        [valtype.i32, valtype.i32, valtype.i32, valtype.i32]
-      ),
-    ]),
-    funcsec([typeidx(0)]),
-    memsec([mem(limits.min(16))]),
-    exportsec([export_('byteParts', exportdesc.func(0))]),
-    codesec([
-      code(
-        func(
-          [],
-          [
-            // push memory location
-            [instr.local.get, localidx(1)],
-            // push value to store
-            [instr.local.get, localidx(0)],
-            // store value @ memory location
-            [instr.i32.store, u32(0), u32(0)],
+    //+ "declare func sqrt(n);", "declare func x();"
+    //- "declare func sqrt;", "declare func x()"
+    DeclareStatement = "declare" "func" identifier "(" Params? ")" ";"
 
-            // load @ memory location + 3
-            [instr.local.get, localidx(1)],
-            [instr.i32.const, i32(3)],
-            instr.i32.add,
-            [instr.i32.load8_u, u32(0), u32(0)],
+    Statement = LetStatement
+              | ExprStatement
 
-            // load @ memory location + 2
-            [instr.local.get, localidx(1)],
-            [instr.i32.const, i32(2)],
-            instr.i32.add,
-            [instr.i32.load8_u, u32(0), u32(0)],
+    //+ "let x = 3 + 4;", "let distance = 100 + 2;"
+    //- "let y;"
+    LetStatement = "let" identifier "=" Expr ";"
 
-            // load @ memory location + 1
-            [instr.local.get, localidx(1)],
-            [instr.i32.const, i32(1)],
-            instr.i32.add,
-            [instr.i32.load8_u, u32(0), u32(0)],
+    //+ "func zero() { 0 }", "func add(x, y) { x + y }"
+    //- "func x", "func x();"
+    FunctionDecl = "func" identifier "(" Params? ")" BlockExpr
 
-            // load @ memory location + 0
-            [instr.local.get, localidx(1)],
-            [instr.i32.load8_u, u32(0), u32(0)],
+    Params = identifier ("," identifier)*
 
-            // end
-            instr.end,
-          ]
-        )
-      ),
-    ]),
-  ]);
+    //+ "{ 42 }", "{ 66 + 99 }", "{ 1 + 2 - 3 }"
+    //+ "{ let x = 3; 42 }"
+    //- "{ 3abc }"
+    BlockExpr = "{" Statement* Expr "}"
 
-  return Uint8Array.from(mod.flat(Infinity));
-}
+    ExprStatement = Expr ";"
 
-test('compileStore32Load8 works', async () => {
-  const { instance } = await WebAssembly.instantiate(compileStore32Load8());
+    Expr = AssignmentExpr  -- assignment
+          | PrimaryExpr (op PrimaryExpr)*  -- arithmetic
 
-  const [b4, b3, b2, b1] = instance.exports.byteParts(0xc0dedbad, 64);
-  assert.strictEqual(b4, 0xc0);
-  assert.strictEqual(b3, 0xde);
-  assert.strictEqual(b2, 0xdb);
-  assert.strictEqual(b1, 0xad);
-});
+    //+ "x := 3", "y := 2 + 1"
+    AssignmentExpr = identifier ":=" Expr
 
-function compileStore32Load16() {
-  const mod = module([
-    // (value, memLoc) -> (s2, s1)
-    typesec([functype([valtype.i32, valtype.i32], [valtype.i32, valtype.i32])]),
-    funcsec([typeidx(0)]),
-    memsec([mem(limits.min(16))]),
-    exportsec([export_('shortParts', exportdesc.func(0))]),
-    codesec([
-      code(
-        func(
-          [],
-          [
-            // push memory location
-            [instr.local.get, localidx(1)],
-            // push value to store
-            [instr.local.get, localidx(0)],
-            // store value @ memory location
-            [instr.i32.store, u32(0), u32(0)],
+    PrimaryExpr = number  -- num
+                | CallExpr  -- call
+                | identifier  -- var
 
-            // load @ memory location + 2
-            [instr.local.get, localidx(1)],
-            [instr.i32.const, i32(2)],
-            instr.i32.add,
-            [instr.i32.load16_u, u32(0), u32(0)],
+    CallExpr = identifier "(" Args? ")"
 
-            // load @ memory location + 0
-            [instr.local.get, localidx(1)],
-            [instr.i32.load16_u, u32(0), u32(0)],
+    Args = Expr ("," Expr)*
 
-            // end
-            instr.end,
-          ]
-        )
-      ),
-    ]),
-  ]);
+    op = "+" | "-"
+    number = digit+
 
-  return Uint8Array.from(mod.flat(Infinity));
-}
+    //+ "x", "élan", "_", "_99"
+    //- "1", "$nope"
+    identifier = identStart identPart*
+    identStart = letter | "_"
+    identPart = identStart | digit
 
-test('compileStore32Load16 works', async () => {
-  const { instance } = await WebAssembly.instantiate(compileStore32Load16());
+    // Examples:
+    //+ "func addOne(x) { x + one }", "func one() { 1 } func two() { 2 }"
+    //- "42", "let x", "func x {}"
+  }
+`;
 
-  const [s2, s1] = instance.exports.shortParts(0xc0dedbad, 64);
-  assert.strictEqual(s2, 0xc0de);
-  assert.strictEqual(s1, 0xdbad);
-});
+test('extracted examples', () => testExtractedExamples(grammarDef));
 
-function compileStore32Load16SU() {
-  const mod = module([
-    // (value, memLoc) -> (signed, unsigned)
-    typesec([functype([valtype.i32, valtype.i32], [valtype.i32, valtype.i32])]),
-    funcsec([typeidx(0)]),
-    memsec([mem(limits.min(16))]),
-    exportsec([export_('lowShortSU', exportdesc.func(0))]),
-    codesec([
-      code(
-        func(
-          [],
-          [
-            // push memory location
-            [instr.local.get, localidx(1)],
-            // push value to store
-            [instr.local.get, localidx(0)],
-            // store value @ memory location
-            [instr.i32.store, u32(0), u32(0)],
+const wafer = ohm.grammar(grammarDef);
 
-            // load unsigned @ memory location
-            [instr.local.get, localidx(1)],
-            [instr.i32.load16_u, u32(0), u32(0)],
-
-            // load signed @ memory location
-            [instr.local.get, localidx(1)],
-            [instr.i32.load16_s, u32(0), u32(0)],
-
-            // end
-            instr.end,
-          ]
-        )
-      ),
-    ]),
-  ]);
-
-  return Uint8Array.from(mod.flat(Infinity));
-}
-
-test('compileStore32Load16SU works', async () => {
-  const { instance } = await WebAssembly.instantiate(compileStore32Load16SU());
-
-  {
-    const [signed, unsigned] = instance.exports.lowShortSU(0xffff, 64);
-    assert.strictEqual(signed, 0xffff);
-    assert.strictEqual(unsigned, -1);
+function compile(source) {
+  const matchResult = wafer.match(source);
+  if (!matchResult.succeeded()) {
+    throw new Error(matchResult.message);
   }
 
-  {
-    const [signed, unsigned] = instance.exports.lowShortSU(0x7fff, 64);
-    assert.strictEqual(signed, 0x7fff);
-    assert.strictEqual(unsigned, 0x7fff);
-  }
-});
+  const symbols = buildSymbolTable(wafer, matchResult);
+  const semantics = wafer.createSemantics();
+  defineToWasm(semantics, symbols);
+  defineImportDecls(semantics);
+  defineFunctionDecls(semantics, symbols);
 
-function compileStore32Load8SU() {
-  const mod = module([
-    // (value, memLoc) -> (signed, unsigned)
-    typesec([functype([valtype.i32, valtype.i32], [valtype.i32, valtype.i32])]),
-    funcsec([typeidx(0)]),
-    memsec([mem(limits.min(16))]),
-    exportsec([export_('lowByteSU', exportdesc.func(0))]),
-    codesec([
-      code(
-        func(
-          [],
-          [
-            // push memory location
-            [instr.local.get, localidx(1)],
-            // push value to store
-            [instr.local.get, localidx(0)],
-            // store value @ memory location
-            [instr.i32.store, u32(0), u32(0)],
-
-            // load unsigned @ memory location
-            [instr.local.get, localidx(1)],
-            [instr.i32.load8_u, u32(0), u32(0)],
-
-            // load signed @ memory location
-            [instr.local.get, localidx(1)],
-            [instr.i32.load8_s, u32(0), u32(0)],
-
-            // end
-            instr.end,
-          ]
-        )
-      ),
-    ]),
-  ]);
-
-  return Uint8Array.from(mod.flat(Infinity));
+  const importDecls = semantics(matchResult).importDecls();
+  const functionDecls = semantics(matchResult).functionDecls();
+  return buildModule(importDecls, functionDecls);
 }
 
-test('compileStore32Load8SU works', async () => {
-  const { instance } = await WebAssembly.instantiate(compileStore32Load8SU());
-
-  {
-    const [signed, unsigned] = instance.exports.lowByteSU(0xff, 64);
-    assert.strictEqual(signed, 0xff);
-    assert.strictEqual(unsigned, -1);
-  }
-
-  {
-    const [signed, unsigned] = instance.exports.lowByteSU(0x7f, 64);
-    assert.strictEqual(signed, 0x7f);
-    assert.strictEqual(unsigned, 0x7f);
-  }
-});
-
-instr.memory = {};
-instr.memory.size = 0x3f;
-instr.memory.grow = 0x40;
-
-instr.i32.xor = 0x73;
-instr.i32.shl = 0x74;
-instr.i32.shr_s = 0x75;
-instr.i32.shr_u = 0x76;
-instr.i32.rotl = 0x77;
-instr.i32.rotr = 0x78;
-
-function compileBinOps() {
-  function binOp(instruction) {
-    return code(
-      func(
-        [],
-        [
-          [instr.local.get, localidx(0)],
-          [instr.local.get, localidx(1)],
-          instruction,
-          instr.end,
-        ]
-      )
-    );
-  }
-
-  const mod = module([
-    typesec([functype([valtype.i32, valtype.i32], [valtype.i32])]),
-    funcsec([
-      typeidx(0),
-      typeidx(0),
-      typeidx(0),
-      typeidx(0),
-      typeidx(0),
-      typeidx(0),
-    ]),
-    exportsec([
-      export_('xor', exportdesc.func(0)),
-      export_('shl', exportdesc.func(1)),
-      export_('shrS', exportdesc.func(2)),
-      export_('shrU', exportdesc.func(3)),
-      export_('rotl', exportdesc.func(4)),
-      export_('rotr', exportdesc.func(5)),
-    ]),
-    codesec([
-      binOp(instr.i32.xor),
-      binOp(instr.i32.shl),
-      binOp(instr.i32.shr_s),
-      binOp(instr.i32.shr_u),
-      binOp(instr.i32.rotl),
-      binOp(instr.i32.rotr),
-    ]),
-  ]);
-
-  return Uint8Array.from(mod.flat(Infinity));
-}
-
-test('compileBinOps works', async () => {
-  const {
-    instance: {
-      exports: { xor, shl, shrS, shrU, rotl, rotr },
+function defineImportDecls(semantics) {
+  semantics.addOperation('importDecls', {
+    Module(iterDeclareStatements, _) {
+      return iterDeclareStatements.children.flatMap((c) => c.importDecls());
     },
-  } = await WebAssembly.instantiate(compileBinOps());
-
-  assert.strictEqual(xor(1, 1), 0);
-  assert.strictEqual(xor(0, -1), -1);
-  assert.strictEqual(xor(0xffffffff, -1), 0);
-  assert.strictEqual(shl(1, 1), 2);
-  assert.strictEqual(shl(1 << 31, 1), 0);
-  assert.strictEqual(shl(1, 8), 256);
-  assert.strictEqual(shrS(1, 1), 0);
-  assert.strictEqual(shrS(-0xf0, 4), -0xf);
-  assert.strictEqual(shrU(1, 1), 0);
-  assert.strictEqual(rotl(1 << 31, 1), 1);
-  assert.strictEqual(rotr(1, 1), 1 << 31);
-});
-
-function compileSizeAndGrow() {
-  const mod = module([
-    typesec([
-      functype([], [valtype.i32]),
-      functype([valtype.i32], [valtype.i32]),
-    ]),
-    funcsec([typeidx(0), typeidx(1)]),
-    memsec([mem(limits.min(16))]),
-    exportsec([
-      export_('size', exportdesc.func(0)),
-      export_('grow', exportdesc.func(1)),
-    ]),
-    codesec([
-      code(func([], [[instr.memory.size, i32(0)], instr.end])),
-      code(
-        func(
-          [],
-          [
-            // grow mem delta from function argument
-            [instr.local.get, localidx(0)],
-            [instr.memory.grow, i32(0)],
-            instr.end,
-          ]
-        )
-      ),
-    ]),
-  ]);
-
-  return Uint8Array.from(mod.flat(Infinity));
+    DeclareStatement(_declare, _func, ident, _l, optParams, _r, _) {
+      const name = ident.sourceString;
+      const paramTypes = getParamTypes(optParams.child(0));
+      return [
+        {
+          module: 'waferImports',
+          name,
+          paramTypes,
+          resultType: valtype.i32,
+        },
+      ];
+    },
+  });
 }
 
-test('compileSizeAndGrow works', async () => {
-  const { instance } = await WebAssembly.instantiate(compileSizeAndGrow());
+function getParamTypes(node) {
+  if (node == null) {
+    return [];
+  }
+  assert.strictEqual(node.ctorName, 'Params', 'Wrong node type');
+  assert.strictEqual(node.numChildren, 3, 'Wrong number of children');
+  const [first, _, iterRest] = node.children;
+  return [first, ...iterRest.children].map((_) => valtype.i32);
+}
 
-  assert.strictEqual(instance.exports.size(), 16);
-  assert.strictEqual(instance.exports.grow(2), 16);
-  assert.strictEqual(instance.exports.size(), 18);
+function buildSymbolTable(grammar, matchResult) {
+  const tempSemantics = grammar.createSemantics();
+  const scopes = [new Map()];
+  tempSemantics.addOperation('buildSymbolTable', {
+    _default(...children) {
+      return children.forEach((c) => c.buildSymbolTable());
+    },
+    DeclareStatement(_declare, _func, ident, _l, optParams, _r, _) {
+      const name = ident.sourceString;
+      scopes.at(-1).set(name, new Map());
+    },
+    FunctionDecl(_func, ident, _lparen, optParams, _rparen, blockExpr) {
+      const name = ident.sourceString;
+      const locals = new Map();
+      scopes.at(-1).set(name, locals);
+      scopes.push(locals);
+      optParams.child(0)?.buildSymbolTable();
+      blockExpr.buildSymbolTable();
+      scopes.pop();
+    },
+    Params(ident, _, iterIdent) {
+      for (const id of [ident, ...iterIdent.children]) {
+        const name = id.sourceString;
+        const idx = scopes.at(-1).size;
+        const info = { name, idx, what: 'param' };
+        scopes.at(-1).set(name, info);
+      }
+    },
+    LetStatement(_let, id, _eq, _expr, _) {
+      const name = id.sourceString;
+      const idx = scopes.at(-1).size;
+      const info = { name, idx, what: 'local' };
+      scopes.at(-1).set(name, info);
+    },
+  });
+  tempSemantics(matchResult).buildSymbolTable();
+  return scopes[0];
+}
+
+test('module with imports', () => {
+  const imports = {
+    waferImports: {
+      add: (a, b) => a + b,
+      one: () => 1,
+      log: (x) => console.log(x),
+    },
+  };
+  const compileAndEval = (source) => loadMod(compile(source), imports).main();
+
+  // Make sure that code with no imports continues to work.
+  assert.strictEqual(compileAndEval(`func main() { 2 + 2 }`), 4);
+
+  // Now test some code that uses imports.
+  assert.strictEqual(
+    compileAndEval(`
+        declare func add(a, b);
+        func main() {
+          let a = 42;
+          add(a, 1)
+        }
+      `),
+    43
+  );
+  assert.strictEqual(
+    compileAndEval(`
+        declare func add(a, b);
+        declare func one();
+        func main() {
+          add(42, one())
+        }
+      `),
+    43
+  );
 });
 
 export * from './chapter06.js';
-export { limits, mem, memidx, memsec, SECTION_ID_MEMORY };
+export { global, globalidx, globalsec, globaltype, mut, SECTION_ID_GLOBAL };
+export { SECTION_ID_START, start, startsec };
+export { import_, importdesc, importsec, SECTION_ID_IMPORT };
+export { buildModule, buildSymbolTable, defineImportDecls, loadMod };

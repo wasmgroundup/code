@@ -63,7 +63,7 @@ const grammarDef = `
     AssignmentExpr = identifier ":=" Expr
 
     PrimaryExpr = number  -- num
-                | CallExpr  -- call
+                | CallExpr
                 | identifier  -- var
 
     CallExpr = identifier "(" Args? ")"
@@ -295,8 +295,8 @@ function buildSymbolTable(grammar, matchResult) {
 
 function defineFunctionDecls(semantics, symbols) {
   semantics.addOperation('functionDecls', {
-    Module(iterDecl) {
-      return iterDecl.children.flatMap((c) => c.functionDecls());
+    _default(...children) {
+      return children.flatMap((c) => c.functionDecls());
     },
     FunctionDecl(_func, ident, _l, _params, _r, _blockExpr) {
       const name = ident.sourceString;
@@ -319,15 +319,15 @@ function defineFunctionDecls(semantics, symbols) {
   });
 }
 
-function compileAndLoad(input) {
-  const mod = new WebAssembly.Module(compile(input));
-  return new WebAssembly.Instance(mod).exports;
-}
-
 test('module with multiple functions', () => {
-  assert.deepEqual(compileAndLoad('func main() { let x = 42; x }').main(), 42);
   assert.deepEqual(
-    compileAndLoad('func doIt() { add(1, 2) } func add(x, y) { x + y }').doIt(),
+    loadMod(compile('func main() { let x = 42; x }')).main(),
+    42
+  );
+  assert.deepEqual(
+    loadMod(
+      compile('func doIt() { add(1, 2) } func add(x, y) { x + y }')
+    ).doIt(),
     3
   );
 });

@@ -36,17 +36,12 @@ const grammarDef = `
     Module = FunctionDecl*
 
     Statement = LetStatement
-              | IfStatement
               | WhileStatement
               | ExprStatement
 
     //+ "let x = 3 + 4;", "let distance = 100 + 2;"
     //- "let y;"
     LetStatement = let identifier "=" Expr ";"
-
-    //+ "if x < 10 {}", "if z { 42; }", "if x {} else if y {} else { 42; }"
-    //- "if x < 10 { 3 } else {}"
-    IfStatement = if Expr BlockStatements (else (BlockStatements|IfStatement))?
 
     //+ "while 0 {}", "while x < 10 { x := x + 1; }"
     //- "while 1 { 42 }", "while x < 10 { x := x + 1 }"
@@ -93,14 +88,14 @@ const grammarDef = `
     logicalOp = and | or
     number = digit+
 
-    keyword = if | else | func | let | while | and | or
+    keyword = if | else | func | let | and | or | while
     if = "if" ~identPart
     else = "else" ~identPart
     func = "func" ~identPart
     let = "let" ~identPart
-    while = "while" ~identPart
     and = "and" ~identPart
     or = "or" ~identPart
+    while = "while" ~identPart
 
     //+ "x", "élan", "_", "_99"
     //- "1", "$nope"
@@ -164,18 +159,6 @@ function defineToWasm(semantics, symbols) {
     LetStatement(_let, ident, _eq, expr, _) {
       const info = resolveSymbol(ident, scopes.at(-1));
       return [expr.toWasm(), instr.local.set, localidx(info.idx)];
-    },
-    IfStatement(_if, expr, thenBlock, _else, iterElseBlock) {
-      const elseFrag = iterElseBlock.child(0)
-        ? [instr.else, iterElseBlock.child(0).toWasm()]
-        : [];
-      return [
-        expr.toWasm(),
-        [instr.if, blocktype.empty],
-        thenBlock.toWasm(),
-        elseFrag,
-        instr.end,
-      ];
     },
     WhileStatement(_while, cond, body) {
       return [
@@ -552,30 +535,3 @@ test('Wafer while loops', () => {
   );
   assert.strictEqual(mod.countTo(10), 10);
 });
-
-test('Wafer conditionals, comparisons, and loops', () => {
-  const mod = loadMod(
-    compile(`
-        func countTo(n) {
-          let x = 0;
-          while x < n {
-            if x < 100 { x := x + 1; }
-          }
-          x
-        }
-        func compare(a, b) {
-          if a < b { 0 - 1 } else if a > b { 1 } else { 0 }
-        }
-
-      `)
-  );
-  assert.strictEqual(mod.countTo(10), 10);
-  assert.strictEqual(mod.countTo(-1), 0);
-
-  assert.strictEqual(mod.compare(1, 2), -1);
-  assert.strictEqual(mod.compare(99, 2), 1);
-  assert.strictEqual(mod.compare(99, 99), 0);
-});
-
-export * from './chapter05.js';
-export { blocktype };

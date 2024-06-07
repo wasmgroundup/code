@@ -1,3 +1,6 @@
+import assert from 'node:assert';
+import * as ohm from 'ohm-js';
+
 import {
   // buildSymbolTable,
   code,
@@ -29,70 +32,145 @@ import {
 
 const test = makeTestFn(import.meta.url);
 
+function buildModule(functionDecls) {
+  const types = functionDecls.map((f) =>
+    functype(f.paramTypes, [f.resultType])
+  );
+  const funcs = functionDecls.map((f, i) => typeidx(i));
+  const codes = functionDecls.map((f) => code(func(f.locals, f.body)));
+  const exports = functionDecls.map((f, i) =>
+    export_(f.name, exportdesc.func(i))
+  );
+
+  const mod = module([
+    typesec(types),
+    funcsec(funcs),
+    exportsec(exports),
+    codesec(codes),
+  ]);
+  return Uint8Array.from(mod.flat(Infinity));
+}
+
 instr.call = 0x10;
 
-instr.global = {};
-instr.global.get = 0x23;
-instr.global.set = 0x24;
-
-const globalidx = u32;
-
-exportdesc.global = (idx) => [0x03, globalidx(idx)];
-
-const SECTION_ID_GLOBAL = 6;
-
-const mut = {
-  const: 0x00,
-  var: 0x01,
-};
-
-// t:valtype  m:mut
-function globaltype(t, m) {
-  return [t, m];
+function buildSymbolTable(grammar, matchResult) {
+  const tempSemantics = grammar.createSemantics();
+  const scopes = [new Map()];
+  tempSemantics.addOperation('buildSymbolTable', {
+    _default(...children) {
+      return children.forEach((c) => c.buildSymbolTable());
+    },
+    FunctionDecl(_func, ident, _lparen, optParams, _rparen, blockExpr) {
+      const name = ident.sourceString;
+      const locals = new Map();
+      scopes.at(-1).set(name, locals);
+      scopes.push(locals);
+      optParams.child(0)?.buildSymbolTable();
+      blockExpr.buildSymbolTable();
+      scopes.pop();
+    },
+    Params(ident, _, iterIdent) {
+      for (const id of [ident, ...iterIdent.children]) {
+        const name = id.sourceString;
+        const idx = scopes.at(-1).size;
+        const info = { name, idx, what: 'param' };
+        scopes.at(-1).set(name, info);
+      }
+    },
+    LetStatement(_let, id, _eq, _expr, _) {
+      const name = id.sourceString;
+      const idx = scopes.at(-1).size;
+      const info = { name, idx, what: 'local' };
+      scopes.at(-1).set(name, info);
+    },
+  });
+  tempSemantics(matchResult).buildSymbolTable();
+  return scopes[0];
 }
 
-// gt:globaltype  e:expr
-function global(gt, e) {
-  return [gt, e];
+function defineFunctionDecls(semantics, symbols) {
+  semantics.addOperation('functionDecls', {
+    _default(...children) {
+      return children.flatMap((c) => c.functionDecls());
+    },
+    FunctionDecl(_func, ident, _l, _params, _r, _blockExpr) {
+      const name = ident.sourceString;
+      const localVars = Array.from(symbols.get(name).values());
+      const params = localVars.filter((info) => info.what === 'param');
+      const paramTypes = params.map((_) => valtype.i32);
+      const varsCount = localVars.filter(
+        (info) => info.what === 'local'
+      ).length;
+      return [
+        {
+          name,
+          paramTypes,
+          resultType: valtype.i32,
+          locals: [locals(varsCount, valtype.i32)],
+          body: this.toWasm(),
+        },
+      ];
+    },
+  });
 }
 
-// glob*:vec(global)
-function globalsec(globs) {
-  return section(SECTION_ID_GLOBAL, vec(globs));
-}
-
-const SECTION_ID_IMPORT = 2;
-
-// mod:name  nm:name  d:importdesc
-function import_(mod, nm, d) {
-  return [name(mod), name(nm), d];
-}
-
-// im*:vec(import)
-function importsec(ims) {
-  return section(SECTION_ID_IMPORT, vec(ims));
-}
-
-const importdesc = {
-  // x:typeidx
-  func(x) {
-    return [0x00, funcidx(x)];
-  },
-  global(globaltype) {
-    return [0x03, globaltype];
-  },
-};
-
-const SECTION_ID_START = 8;
-
-const start = funcidx;
-
-// st:start
-function startsec(st) {
-  return section(SECTION_ID_START, st);
+function defineToWasm(semantics, symbols) {
+  const scopes = [symbols];
+  semantics.addOperation('toWasm', {
+    FunctionDecl(_func, ident, _lparen, optParams, _rparen, blockExpr) {
+      scopes.push(symbols.get(ident.sourceString));
+      const result = [blockExpr.toWasm(), instr.end];
+      scopes.pop();
+      return result;
+    },
+    BlockExpr(_lbrace, iterStatement, expr, _rbrace) {
+      return [...iterStatement.children, expr].map((c) => c.toWasm());
+    },
+    LetStatement(_let, ident, _eq, expr, _) {
+      const info = resolveSymbol(ident, scopes.at(-1));
+      return [expr.toWasm(), instr.local.set, localidx(info.idx)];
+    },
+    ExprStatement(expr, _) {
+      return [expr.toWasm(), instr.drop];
+    },
+    Expr_arithmetic(num, iterOps, iterOperands) {
+      const result = [num.toWasm()];
+      for (let i = 0; i < iterOps.numChildren; i++) {
+        const op = iterOps.child(i);
+        const operand = iterOperands.child(i);
+        result.push(operand.toWasm(), op.toWasm());
+      }
+      return result;
+    },
+    AssignmentExpr(ident, _, expr) {
+      const info = resolveSymbol(ident, scopes.at(-1));
+      return [expr.toWasm(), instr.local.tee, localidx(info.idx)];
+    },
+    CallExpr(ident, _lparen, optArgs, _rparen) {
+      const name = ident.sourceString;
+      const funcNames = Array.from(scopes[0].keys());
+      const idx = funcNames.indexOf(name);
+      return [
+        optArgs.children.map((c) => c.toWasm()),
+        [instr.call, funcidx(idx)],
+      ];
+    },
+    Args(exp, _, iterExp) {
+      return [exp, ...iterExp.children].map((c) => c.toWasm());
+    },
+    PrimaryExpr_var(ident) {
+      const info = resolveSymbol(ident, scopes.at(-1));
+      return [instr.local.get, localidx(info.idx)];
+    },
+    op(char) {
+      return [char.sourceString === '+' ? instr.i32.add : instr.i32.sub];
+    },
+    number(_digits) {
+      const num = parseInt(this.sourceString, 10);
+      return [instr.i32.const, ...i32(num)];
+    },
+  });
 }
 
 export * from './chapter04.js';
-export { SECTION_ID_START, start, startsec };
-export { global, globalidx, globalsec, globaltype, mut, SECTION_ID_GLOBAL };
-export { import_, importdesc, importsec, SECTION_ID_IMPORT };
+export { buildModule, buildSymbolTable, defineFunctionDecls, defineToWasm };

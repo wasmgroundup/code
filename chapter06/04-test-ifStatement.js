@@ -576,6 +576,3 @@ test('Wafer conditionals, comparisons, and loops', () => {
   assert.strictEqual(mod.compare(99, 2), 1);
   assert.strictEqual(mod.compare(99, 99), 0);
 });
-
-export * from './chapter05.js';
-export { blocktype };

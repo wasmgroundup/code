@@ -1,18 +1,25 @@
+import assert from 'node:assert';
+import * as ohm from 'ohm-js';
+
 import {
   code,
   codesec,
+  defineFunctionDecls,
+  defineToWasm,
   export_,
   exportdesc,
   exportsec,
   func,
+  funcidx,
   funcsec,
   functype,
   i32,
   instr,
-  localidx,
   makeTestFn,
   module,
+  name,
   section,
+  testExtractedExamples,
   typeidx,
   typesec,
   u32,
@@ -22,47 +29,153 @@ import {
 
 const test = makeTestFn(import.meta.url);
 
-const SECTION_ID_MEMORY = 5;
+const SECTION_ID_IMPORT = 2;
 
-const memidx = u32;
-
-exportdesc.mem = (idx) => [0x02, memidx(idx)];
-
-function mem(memtype) {
-  return memtype;
+// mod:name  nm:name  d:importdesc
+function import_(mod, nm, d) {
+  return [name(mod), name(nm), d];
 }
 
-function memsec(mems) {
-  return section(SECTION_ID_MEMORY, vec(mems));
+// im*:vec(import)
+function importsec(ims) {
+  return section(SECTION_ID_IMPORT, vec(ims));
 }
 
-const limits = {
-  min(n) {
-    return [0x00, u32(n)];
-  },
-  minmax(n, m) {
-    return [0x01, u32(n), u32(m)];
+const importdesc = {
+  // x:typeidx
+  func(x) {
+    return [0x00, typeidx(x)];
   },
 };
 
-instr.i32.load = 0x28;
-instr.i32.store = 0x36;
+function loadMod(bytes, imports) {
+  const mod = new WebAssembly.Module(bytes);
+  return new WebAssembly.Instance(mod, imports).exports;
+}
 
-instr.i32.load8_s = 0x2c;
-instr.i32.load8_u = 0x2d;
-instr.i32.load16_s = 0x2e;
-instr.i32.load16_u = 0x2f;
+function buildModule(importDecls, functionDecls) {
+  const types = [...importDecls, ...functionDecls].map((f) =>
+    functype(f.paramTypes, [f.resultType])
+  );
+  const imports = importDecls.map((f, i) =>
+    import_(f.module, f.name, importdesc.func(i))
+  );
+  const funcs = functionDecls.map((f, i) => typeidx(i + importDecls.length));
+  const codes = functionDecls.map((f) => code(func(f.locals, f.body)));
+  const exports = functionDecls.map((f, i) =>
+    export_(f.name, exportdesc.func(i + importDecls.length))
+  );
 
-instr.memory = {};
-instr.memory.size = 0x3f;
-instr.memory.grow = 0x40;
+  const mod = module([
+    typesec(types),
+    importsec(imports),
+    funcsec(funcs),
+    exportsec(exports),
+    codesec(codes),
+  ]);
+  return Uint8Array.from(mod.flat(Infinity));
+}
 
-instr.i32.xor = 0x73;
-instr.i32.shl = 0x74;
-instr.i32.shr_s = 0x75;
-instr.i32.shr_u = 0x76;
-instr.i32.rotl = 0x77;
-instr.i32.rotr = 0x78;
+const SECTION_ID_START = 8;
+
+const start = funcidx;
+
+// st:start
+function startsec(st) {
+  return section(SECTION_ID_START, st);
+}
+
+instr.global = {};
+instr.global.get = 0x23;
+instr.global.set = 0x24;
+
+const globalidx = u32;
+
+exportdesc.global = (idx) => [0x03, globalidx(idx)];
+
+const SECTION_ID_GLOBAL = 6;
+
+const mut = {
+  const: 0x00,
+  var: 0x01,
+};
+
+// t:valtype  m:mut
+function globaltype(t, m) {
+  return [t, m];
+}
+
+// gt:globaltype  e:expr
+function global(gt, e) {
+  return [gt, e];
+}
+
+// glob*:vec(global)
+function globalsec(globs) {
+  return section(SECTION_ID_GLOBAL, vec(globs));
+}
+
+function defineImportDecls(semantics) {
+  semantics.addOperation('importDecls', {
+    Module(iterDeclareStatements, _) {
+      return iterDeclareStatements.children.flatMap((c) => c.importDecls());
+    },
+    DeclareStatement(_declare, _func, ident, _l, optParams, _r, _) {
+      const name = ident.sourceString;
+      const paramTypes = getParamTypes(optParams.child(0));
+      return [
+        {
+          module: 'waferImports',
+          name,
+          paramTypes,
+          resultType: valtype.i32,
+        },
+      ];
+    },
+  });
+}
+
+function buildSymbolTable(grammar, matchResult) {
+  const tempSemantics = grammar.createSemantics();
+  const scopes = [new Map()];
+  tempSemantics.addOperation('buildSymbolTable', {
+    _default(...children) {
+      return children.forEach((c) => c.buildSymbolTable());
+    },
+    DeclareStatement(_declare, _func, ident, _l, optParams, _r, _) {
+      const name = ident.sourceString;
+      scopes.at(-1).set(name, new Map());
+    },
+    FunctionDecl(_func, ident, _lparen, optParams, _rparen, blockExpr) {
+      const name = ident.sourceString;
+      const locals = new Map();
+      scopes.at(-1).set(name, locals);
+      scopes.push(locals);
+      optParams.child(0)?.buildSymbolTable();
+      blockExpr.buildSymbolTable();
+      scopes.pop();
+    },
+    Params(ident, _, iterIdent) {
+      for (const id of [ident, ...iterIdent.children]) {
+        const name = id.sourceString;
+        const idx = scopes.at(-1).size;
+        const info = { name, idx, what: 'param' };
+        scopes.at(-1).set(name, info);
+      }
+    },
+    LetStatement(_let, id, _eq, _expr, _) {
+      const name = id.sourceString;
+      const idx = scopes.at(-1).size;
+      const info = { name, idx, what: 'local' };
+      scopes.at(-1).set(name, info);
+    },
+  });
+  tempSemantics(matchResult).buildSymbolTable();
+  return scopes[0];
+}
 
 export * from './chapter06.js';
-export { limits, mem, memidx, memsec, SECTION_ID_MEMORY };
+export { global, globalidx, globalsec, globaltype, mut, SECTION_ID_GLOBAL };
+export { SECTION_ID_START, start, startsec };
+export { import_, importdesc, importsec, SECTION_ID_IMPORT };
+export { buildModule, buildSymbolTable, defineImportDecls, loadMod };

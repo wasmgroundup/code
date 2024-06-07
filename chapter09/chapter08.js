@@ -465,12 +465,57 @@ function buildSymbolTable(grammar, matchResult) {
   return scopes[0];
 }
 
+makeTestFn(import.meta.url);
+
+const SECTION_ID_MEMORY = 5;
+
+const memidx = u32;
+
+exportdesc.mem = (idx) => [0x02, memidx(idx)];
+
+function mem(memtype) {
+  return memtype;
+}
+
+function memsec(mems) {
+  return section(SECTION_ID_MEMORY, vec(mems));
+}
+
+const limits = {
+  min(n) {
+    return [0x00, u32(n)];
+  },
+  minmax(n, m) {
+    return [0x01, u32(n), u32(m)];
+  },
+};
+
+instr.i32.load = 0x28;
+instr.i32.store = 0x36;
+
+instr.i32.load8_s = 0x2c;
+instr.i32.load8_u = 0x2d;
+instr.i32.load16_s = 0x2e;
+instr.i32.load16_u = 0x2f;
+
+instr.memory = {};
+instr.memory.size = 0x3f;
+instr.memory.grow = 0x40;
+
+instr.i32.xor = 0x73;
+instr.i32.shl = 0x74;
+instr.i32.shr_s = 0x75;
+instr.i32.shr_u = 0x76;
+instr.i32.rotl = 0x77;
+instr.i32.rotr = 0x78;
+
 export {
   SECTION_ID_CODE,
   SECTION_ID_EXPORT,
   SECTION_ID_FUNCTION,
   SECTION_ID_GLOBAL,
   SECTION_ID_IMPORT,
+  SECTION_ID_MEMORY,
   SECTION_ID_START,
   SECTION_ID_TYPE,
   blocktype,
@@ -498,11 +543,15 @@ export {
   importsec,
   instr,
   int32ToBytes,
+  limits,
   loadMod,
   localidx,
   locals,
   magic,
   makeTestFn,
+  mem,
+  memidx,
+  memsec,
   module,
   mut,
   name,
