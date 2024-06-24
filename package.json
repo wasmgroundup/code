@@ -2,7 +2,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test chapter*/*.js",
+    "test": "node --test chapter*/*[0-9]*.js",
     "postinstall": "cat README.md"
   },
   "devDependencies": {
