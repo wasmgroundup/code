@@ -573,8 +573,8 @@ test('Wafer conditionals, comparisons, and loops', () => {
   assert.strictEqual(mod.countTo(-1), 0);
 
   assert.strictEqual(mod.compare(1, 2), -1);
-  assert.strictEqual(mod.compare(99, 2), 1);
-  assert.strictEqual(mod.compare(99, 99), 0);
+  assert.strictEqual(mod.compare(42, 2), 1);
+  assert.strictEqual(mod.compare(42, 42), 0);
 });
 
 export * from './chapter05.js';
