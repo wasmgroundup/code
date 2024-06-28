@@ -22,12 +22,101 @@ import {
   testExtractedExamples,
   typeidx,
   typesec,
-  u32,
   valtype,
   vec,
 } from './chapter06.js';
 
 const test = makeTestFn(import.meta.url);
+
+const grammarDef = `
+  Wafer {
+    Module = ExternFunctionDecl* FunctionDecl*
+
+    Statement = LetStatement
+              | IfStatement
+              | WhileStatement
+              | ExprStatement
+
+    //+ "let x = 3 + 4;", "let distance = 100 + 2;"
+    //- "let y;"
+    LetStatement = let identifier "=" Expr ";"
+
+    //+ "if x < 10 {}", "if z { 42; }", "if x {} else if y {} else { 42; }"
+    //- "if x < 10 { 3 } else {}"
+    IfStatement = if Expr BlockStatements (else (BlockStatements|IfStatement))?
+
+    //+ "while 0 {}", "while x < 10 { x := x + 1; }"
+    //- "while 1 { 42 }", "while x < 10 { x := x + 1 }"
+    WhileStatement = while Expr BlockStatements
+
+    //+ "func zero() { 0 }", "func add(x, y) { x + y }"
+    //- "func x", "func x();"
+    FunctionDecl = func identifier "(" Params? ")" BlockExpr
+
+    //+ "extern func print(x);"
+    ExternFunctionDecl = extern func identifier "(" Params? ")" ";"
+    Params = identifier ("," identifier)*
+
+    //+ "{ 42 }", "{ 66 + 99 }", "{ 1 + 2 - 3 }"
+    //+ "{ let x = 3; 42 }"
+    //- "{ 3abc }"
+    BlockExpr = "{" Statement* Expr "}"
+
+    //+ "{}", "{ let x = 3; }", "{ 42; 99; }"
+    //- "{ 42 }", "{ x := 1 }"
+    BlockStatements = "{" Statement* "}"
+
+    ExprStatement = Expr ";"
+
+    Expr = AssignmentExpr  -- assignment
+          | PrimaryExpr (binaryOp PrimaryExpr)*  -- binary
+
+    //+ "x := 3", "y := 2 + 1"
+    AssignmentExpr = identifier ":=" Expr
+
+    PrimaryExpr = number  -- num
+                | CallExpr
+                | IfExpr
+                | identifier  -- var
+
+    CallExpr = identifier "(" Args? ")"
+
+    Args = Expr ("," Expr)*
+
+    //+ "if x { 42 } else { 99 }", "if x { 42 } else if y { 99 } else { 0 }"
+    //- "if x { 42 }"
+    IfExpr = if Expr BlockExpr else (BlockExpr|IfExpr)
+
+    binaryOp = "+" | "-" | compareOp | logicalOp
+    compareOp = "==" | "!=" | "<=" | "<" | ">=" | ">"
+    logicalOp = and | or
+    number = digit+
+
+    keyword = if | else | func | let | while | and | or | extern
+    if = "if" ~identPart
+    else = "else" ~identPart
+    func = "func" ~identPart
+    let = "let" ~identPart
+    while = "while" ~identPart
+    and = "and" ~identPart
+    or = "or" ~identPart
+    extern = "extern" ~identPart
+
+    //+ "x", "élan", "_", "_99"
+    //- "1", "$nope"
+    identifier = ~keyword identStart identPart*
+    identStart = letter | "_"
+    identPart = identStart | digit
+
+    // Examples:
+    //+ "func addOne(x) { x + one }", "func one() { 1 } func two() { 2 }"
+    //- "42", "let x", "func x {}"
+  }
+`;
+
+test('extracted examples', () => testExtractedExamples(grammarDef));
+
+const wafer = ohm.grammar(grammarDef);
 
 const SECTION_ID_IMPORT = 2;
 
@@ -47,11 +136,6 @@ const importdesc = {
     return [0x00, typeidx(x)];
   },
 };
-
-function loadMod(bytes, imports) {
-  const mod = new WebAssembly.Module(bytes);
-  return new WebAssembly.Instance(mod, imports).exports;
-}
 
 function buildModule(importDecls, functionDecls) {
   const types = [...importDecls, ...functionDecls].map((f) =>
@@ -76,53 +160,61 @@ function buildModule(importDecls, functionDecls) {
   return Uint8Array.from(mod.flat(Infinity));
 }
 
-const SECTION_ID_START = 8;
+test('buildModule with imports', () => {
+  const importDecls = [
+    {
+      module: 'basicMath',
+      name: 'addOne',
+      paramTypes: [valtype.i32],
+      resultType: valtype.i32,
+    },
+  ];
+  const functionDecls = [
+    {
+      name: 'main',
+      paramTypes: [],
+      resultType: valtype.i32,
+      locals: [],
+      body: [instr.i32.const, i32(42), instr.call, funcidx(0), instr.end],
+    },
+  ];
+  const exports = loadMod(buildModule(importDecls, functionDecls), {
+    basicMath: { addOne: (x) => x + 1 },
+  });
+  assert.strictEqual(exports.main(), 43);
+});
 
-const start = funcidx;
-
-// st:start
-function startsec(st) {
-  return section(SECTION_ID_START, st);
+function loadMod(bytes, imports) {
+  const mod = new WebAssembly.Module(bytes);
+  return new WebAssembly.Instance(mod, imports).exports;
 }
 
-instr.global = {};
-instr.global.get = 0x23;
-instr.global.set = 0x24;
+function compile(source) {
+  const matchResult = wafer.match(source);
+  if (!matchResult.succeeded()) {
+    throw new Error(matchResult.message);
+  }
 
-const globalidx = u32;
+  const symbols = buildSymbolTable(wafer, matchResult);
+  const semantics = wafer.createSemantics();
+  defineToWasm(semantics, symbols);
+  defineImportDecls(semantics);
+  defineFunctionDecls(semantics, symbols);
 
-exportdesc.global = (idx) => [0x03, globalidx(idx)];
-
-const SECTION_ID_GLOBAL = 6;
-
-const mut = {
-  const: 0x00,
-  var: 0x01,
-};
-
-// t:valtype  m:mut
-function globaltype(t, m) {
-  return [t, m];
-}
-
-// gt:globaltype  e:expr
-function global(gt, e) {
-  return [gt, e];
-}
-
-// glob*:vec(global)
-function globalsec(globs) {
-  return section(SECTION_ID_GLOBAL, vec(globs));
+  const importDecls = semantics(matchResult).importDecls();
+  const functionDecls = semantics(matchResult).functionDecls();
+  return buildModule(importDecls, functionDecls);
 }
 
 function defineImportDecls(semantics) {
   semantics.addOperation('importDecls', {
-    Module(iterDeclareStatements, _) {
-      return iterDeclareStatements.children.flatMap((c) => c.importDecls());
+    Module(iterDecls, _) {
+      return iterDecls.children.flatMap((c) => c.importDecls());
     },
-    DeclareStatement(_declare, _func, ident, _l, optParams, _r, _) {
+    ExternFunctionDecl(_extern, _func, ident, _l, optParams, _r, _) {
       const name = ident.sourceString;
-      const paramTypes = getParamTypes(optParams.child(0));
+      const paramTypes =
+        optParams.numChildren === 0 ? [] : getParamTypes(optParams.child(0));
       return [
         {
           module: 'waferImports',
@@ -135,6 +227,13 @@ function defineImportDecls(semantics) {
   });
 }
 
+function getParamTypes(node) {
+  assert.strictEqual(node.ctorName, 'Params', 'Wrong node type');
+  assert.strictEqual(node.numChildren, 3, 'Wrong number of children');
+  const [first, _, iterRest] = node.children;
+  return new Array(iterRest.numChildren + 1).fill(valtype.i32);
+}
+
 function buildSymbolTable(grammar, matchResult) {
   const tempSemantics = grammar.createSemantics();
   const scopes = [new Map()];
@@ -142,7 +241,7 @@ function buildSymbolTable(grammar, matchResult) {
     _default(...children) {
       return children.forEach((c) => c.buildSymbolTable());
     },
-    DeclareStatement(_declare, _func, ident, _l, optParams, _r, _) {
+    ExternFunctionDecl(_extern, _func, ident, _l, optParams, _r, _) {
       const name = ident.sourceString;
       scopes.at(-1).set(name, new Map());
     },
@@ -174,8 +273,42 @@ function buildSymbolTable(grammar, matchResult) {
   return scopes[0];
 }
 
+test('module with imports', () => {
+  const imports = {
+    waferImports: {
+      add: (a, b) => a + b,
+      one: () => 1,
+      log: (x) => console.log(x),
+    },
+  };
+  const compileAndEval = (source) => loadMod(compile(source), imports).main();
+
+  // Make sure that code with no imports continues to work.
+  assert.strictEqual(compileAndEval(`func main() { 2 + 2 }`), 4);
+
+  // Now test some code that uses imports.
+  assert.strictEqual(
+    compileAndEval(`
+        extern func add(a, b);
+        func main() {
+          let a = 42;
+          add(a, 1)
+        }
+      `),
+    43
+  );
+  assert.strictEqual(
+    compileAndEval(`
+        extern func add(a, b);
+        extern func one();
+        func main() {
+          add(42, one())
+        }
+      `),
+    43
+  );
+});
+
 export * from './chapter06.js';
-export { global, globalidx, globalsec, globaltype, mut, SECTION_ID_GLOBAL };
-export { SECTION_ID_START, start, startsec };
 export { import_, importdesc, importsec, SECTION_ID_IMPORT };
 export { buildModule, buildSymbolTable, defineImportDecls, loadMod };

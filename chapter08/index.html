@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head><title>WasmDRAW!</title></head>
+<body>
+  <canvas width="256" height="256"></canvas>
+  <script type="module">
+    const canvas = document.querySelector("canvas");
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = '#6250E7';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const backgroundImgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    function setPixel(x, y, r, g, b, a) {
+      const offset = (y * canvas.width * 4) + (x * 4);
+      const {data} = backgroundImgData;
+
+      data[offset + 0] = r;
+      data[offset + 1] = g;
+      data[offset + 2] = b;
+      data[offset + 3] = a;
+    }
+
+    const {instance} = await WebAssembly.instantiateStreaming(
+        fetch('draw.wasm'),
+        {
+          waferImports: {setPixel},
+        },
+    );
+
+    requestAnimationFrame(function render(timestamp) {
+      const t = Math.floor((Math.sin(timestamp / 2000) + 1) / 2 * 255);
+      instance.exports.draw(canvas.width, canvas.height, t);
+      ctx.putImageData(backgroundImgData, 0, 0);
+
+      // Draw title on top of background
+      ctx.fillStyle = 'white';
+      ctx.font = '32px serif';
+      ctx.fillText('WebAssembly', 16, 202)
+
+      ctx.font = '22.5px serif';
+      ctx.fillText('from the Ground Up', 18, 230);
+
+      requestAnimationFrame(render);
+    });
+    </script>
+</body>
+</html>

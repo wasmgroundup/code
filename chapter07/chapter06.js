@@ -291,6 +291,13 @@ function defineFunctionDecls(semantics, symbols) {
   });
 }
 
+makeTestFn(import.meta.url);
+
+instr.if = 0x04;
+instr.else = 0x05;
+
+const blocktype = { empty: 0x40, ...valtype };
+
 function defineToWasm(semantics, symbols) {
   const scopes = [symbols];
   semantics.addOperation('toWasm', {
@@ -303,14 +310,40 @@ function defineToWasm(semantics, symbols) {
     BlockExpr(_lbrace, iterStatement, expr, _rbrace) {
       return [...iterStatement.children, expr].map((c) => c.toWasm());
     },
+    BlockStatements(_lbrace, iterStatement, _rbrace) {
+      return iterStatement.children.map((c) => c.toWasm());
+    },
     LetStatement(_let, ident, _eq, expr, _) {
       const info = resolveSymbol(ident, scopes.at(-1));
       return [expr.toWasm(), instr.local.set, localidx(info.idx)];
     },
+    IfStatement(_if, expr, thenBlock, _else, iterElseBlock) {
+      const elseFrag = iterElseBlock.child(0)
+        ? [instr.else, iterElseBlock.child(0).toWasm()]
+        : [];
+      return [
+        expr.toWasm(),
+        [instr.if, blocktype.empty],
+        thenBlock.toWasm(),
+        elseFrag,
+        instr.end,
+      ];
+    },
+    WhileStatement(_while, cond, body) {
+      return [
+        [instr.loop, blocktype.empty],
+        cond.toWasm(),
+        [instr.if, blocktype.empty],
+        body.toWasm(),
+        [instr.br, labelidx(1)],
+        instr.end, // end if
+        instr.end, // end loop
+      ];
+    },
     ExprStatement(expr, _) {
       return [expr.toWasm(), instr.drop];
     },
-    Expr_arithmetic(num, iterOps, iterOperands) {
+    Expr_binary(num, iterOps, iterOperands) {
       const result = [num.toWasm()];
       for (let i = 0; i < iterOps.numChildren; i++) {
         const op = iterOps.child(i);
@@ -335,12 +368,41 @@ function defineToWasm(semantics, symbols) {
     Args(exp, _, iterExp) {
       return [exp, ...iterExp.children].map((c) => c.toWasm());
     },
+    IfExpr(_if, expr, thenBlock, _else, elseBlock) {
+      return [
+        expr.toWasm(),
+        [instr.if, blocktype.i32],
+        thenBlock.toWasm(),
+        instr.else,
+        elseBlock.toWasm(),
+        instr.end,
+      ];
+    },
     PrimaryExpr_var(ident) {
       const info = resolveSymbol(ident, scopes.at(-1));
       return [instr.local.get, localidx(info.idx)];
     },
-    op(char) {
-      return [char.sourceString === '+' ? instr.i32.add : instr.i32.sub];
+    binaryOp(char) {
+      const op = char.sourceString;
+      const instructionByOp = {
+        // Arithmetic
+        '+': instr.i32.add,
+        '-': instr.i32.sub,
+        // Comparison
+        '==': instr.i32.eq,
+        '!=': instr.i32.ne,
+        '<': instr.i32.lt_s,
+        '<=': instr.i32.le_s,
+        '>': instr.i32.gt_s,
+        '>=': instr.i32.ge_s,
+        // Logical
+        and: instr.i32.and,
+        or: instr.i32.or,
+      };
+      if (!Object.hasOwn(instructionByOp, op)) {
+        throw new Error(`Unhandle binary op '${op}'`);
+      }
+      return instructionByOp[op];
     },
     number(_digits) {
       const num = parseInt(this.sourceString, 10);
@@ -348,13 +410,6 @@ function defineToWasm(semantics, symbols) {
     },
   });
 }
-
-makeTestFn(import.meta.url);
-
-instr.if = 0x04;
-instr.else = 0x05;
-
-const blocktype = { empty: 0x40, ...valtype };
 
 instr.i32.eq = 0x46; // a == b
 instr.i32.ne = 0x47; // a != b
@@ -371,6 +426,8 @@ instr.i32.eqz = 0x45; // a == 0
 
 instr.i32.and = 0x71;
 instr.i32.or = 0x72;
+
+const labelidx = u32;
 
 instr.block = 0x02;
 instr.loop = 0x03;

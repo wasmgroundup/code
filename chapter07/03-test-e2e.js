@@ -308,7 +308,3 @@ test('module with imports', () => {
     43
   );
 });
-
-export * from './chapter06.js';
-export { import_, importdesc, importsec, SECTION_ID_IMPORT };
-export { buildModule, buildSymbolTable, defineImportDecls, loadMod };

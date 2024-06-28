@@ -232,6 +232,13 @@ function defineFunctionDecls(semantics, symbols) {
   });
 }
 
+makeTestFn(import.meta.url);
+
+instr.if = 0x04;
+instr.else = 0x05;
+
+const blocktype = { empty: 0x40, ...valtype };
+
 function defineToWasm(semantics, symbols) {
   const scopes = [symbols];
   semantics.addOperation('toWasm', {
@@ -244,14 +251,40 @@ function defineToWasm(semantics, symbols) {
     BlockExpr(_lbrace, iterStatement, expr, _rbrace) {
       return [...iterStatement.children, expr].map((c) => c.toWasm());
     },
+    BlockStatements(_lbrace, iterStatement, _rbrace) {
+      return iterStatement.children.map((c) => c.toWasm());
+    },
     LetStatement(_let, ident, _eq, expr, _) {
       const info = resolveSymbol(ident, scopes.at(-1));
       return [expr.toWasm(), instr.local.set, localidx(info.idx)];
     },
+    IfStatement(_if, expr, thenBlock, _else, iterElseBlock) {
+      const elseFrag = iterElseBlock.child(0)
+        ? [instr.else, iterElseBlock.child(0).toWasm()]
+        : [];
+      return [
+        expr.toWasm(),
+        [instr.if, blocktype.empty],
+        thenBlock.toWasm(),
+        elseFrag,
+        instr.end,
+      ];
+    },
+    WhileStatement(_while, cond, body) {
+      return [
+        [instr.loop, blocktype.empty],
+        cond.toWasm(),
+        [instr.if, blocktype.empty],
+        body.toWasm(),
+        [instr.br, labelidx(1)],
+        instr.end, // end if
+        instr.end, // end loop
+      ];
+    },
     ExprStatement(expr, _) {
       return [expr.toWasm(), instr.drop];
     },
-    Expr_arithmetic(num, iterOps, iterOperands) {
+    Expr_binary(num, iterOps, iterOperands) {
       const result = [num.toWasm()];
       for (let i = 0; i < iterOps.numChildren; i++) {
         const op = iterOps.child(i);
@@ -276,12 +309,41 @@ function defineToWasm(semantics, symbols) {
     Args(exp, _, iterExp) {
       return [exp, ...iterExp.children].map((c) => c.toWasm());
     },
+    IfExpr(_if, expr, thenBlock, _else, elseBlock) {
+      return [
+        expr.toWasm(),
+        [instr.if, blocktype.i32],
+        thenBlock.toWasm(),
+        instr.else,
+        elseBlock.toWasm(),
+        instr.end,
+      ];
+    },
     PrimaryExpr_var(ident) {
       const info = resolveSymbol(ident, scopes.at(-1));
       return [instr.local.get, localidx(info.idx)];
     },
-    op(char) {
-      return [char.sourceString === '+' ? instr.i32.add : instr.i32.sub];
+    binaryOp(char) {
+      const op = char.sourceString;
+      const instructionByOp = {
+        // Arithmetic
+        '+': instr.i32.add,
+        '-': instr.i32.sub,
+        // Comparison
+        '==': instr.i32.eq,
+        '!=': instr.i32.ne,
+        '<': instr.i32.lt_s,
+        '<=': instr.i32.le_s,
+        '>': instr.i32.gt_s,
+        '>=': instr.i32.ge_s,
+        // Logical
+        and: instr.i32.and,
+        or: instr.i32.or,
+      };
+      if (!Object.hasOwn(instructionByOp, op)) {
+        throw new Error(`Unhandle binary op '${op}'`);
+      }
+      return instructionByOp[op];
     },
     number(_digits) {
       const num = parseInt(this.sourceString, 10);
@@ -289,13 +351,6 @@ function defineToWasm(semantics, symbols) {
     },
   });
 }
-
-makeTestFn(import.meta.url);
-
-instr.if = 0x04;
-instr.else = 0x05;
-
-const blocktype = { empty: 0x40, ...valtype };
 
 instr.i32.eq = 0x46; // a == b
 instr.i32.ne = 0x47; // a != b
@@ -313,12 +368,104 @@ instr.i32.eqz = 0x45; // a == 0
 instr.i32.and = 0x71;
 instr.i32.or = 0x72;
 
+const labelidx = u32;
+
 instr.block = 0x02;
 instr.loop = 0x03;
 instr.br = 0x0c;
 instr.br_if = 0x0d;
 
-makeTestFn(import.meta.url);
+const test = makeTestFn(import.meta.url);
+
+const grammarDef = `
+  Wafer {
+    Module = ExternFunctionDecl* FunctionDecl*
+
+    Statement = LetStatement
+              | IfStatement
+              | WhileStatement
+              | ExprStatement
+
+    //+ "let x = 3 + 4;", "let distance = 100 + 2;"
+    //- "let y;"
+    LetStatement = let identifier "=" Expr ";"
+
+    //+ "if x < 10 {}", "if z { 42; }", "if x {} else if y {} else { 42; }"
+    //- "if x < 10 { 3 } else {}"
+    IfStatement = if Expr BlockStatements (else (BlockStatements|IfStatement))?
+
+    //+ "while 0 {}", "while x < 10 { x := x + 1; }"
+    //- "while 1 { 42 }", "while x < 10 { x := x + 1 }"
+    WhileStatement = while Expr BlockStatements
+
+    //+ "func zero() { 0 }", "func add(x, y) { x + y }"
+    //- "func x", "func x();"
+    FunctionDecl = func identifier "(" Params? ")" BlockExpr
+
+    //+ "extern func print(x);"
+    ExternFunctionDecl = extern func identifier "(" Params? ")" ";"
+    Params = identifier ("," identifier)*
+
+    //+ "{ 42 }", "{ 66 + 99 }", "{ 1 + 2 - 3 }"
+    //+ "{ let x = 3; 42 }"
+    //- "{ 3abc }"
+    BlockExpr = "{" Statement* Expr "}"
+
+    //+ "{}", "{ let x = 3; }", "{ 42; 99; }"
+    //- "{ 42 }", "{ x := 1 }"
+    BlockStatements = "{" Statement* "}"
+
+    ExprStatement = Expr ";"
+
+    Expr = AssignmentExpr  -- assignment
+          | PrimaryExpr (binaryOp PrimaryExpr)*  -- binary
+
+    //+ "x := 3", "y := 2 + 1"
+    AssignmentExpr = identifier ":=" Expr
+
+    PrimaryExpr = number  -- num
+                | CallExpr
+                | IfExpr
+                | identifier  -- var
+
+    CallExpr = identifier "(" Args? ")"
+
+    Args = Expr ("," Expr)*
+
+    //+ "if x { 42 } else { 99 }", "if x { 42 } else if y { 99 } else { 0 }"
+    //- "if x { 42 }"
+    IfExpr = if Expr BlockExpr else (BlockExpr|IfExpr)
+
+    binaryOp = "+" | "-" | compareOp | logicalOp
+    compareOp = "==" | "!=" | "<=" | "<" | ">=" | ">"
+    logicalOp = and | or
+    number = digit+
+
+    keyword = if | else | func | let | while | and | or | extern
+    if = "if" ~identPart
+    else = "else" ~identPart
+    func = "func" ~identPart
+    let = "let" ~identPart
+    while = "while" ~identPart
+    and = "and" ~identPart
+    or = "or" ~identPart
+    extern = "extern" ~identPart
+
+    //+ "x", "élan", "_", "_99"
+    //- "1", "$nope"
+    identifier = ~keyword identStart identPart*
+    identStart = letter | "_"
+    identPart = identStart | digit
+
+    // Examples:
+    //+ "func addOne(x) { x + one }", "func one() { 1 } func two() { 2 }"
+    //- "42", "let x", "func x {}"
+  }
+`;
+
+test('extracted examples', () => testExtractedExamples(grammarDef));
+
+const wafer = ohm.grammar(grammarDef);
 
 const SECTION_ID_IMPORT = 2;
 
@@ -338,11 +485,6 @@ const importdesc = {
     return [0x00, typeidx(x)];
   },
 };
-
-function loadMod(bytes, imports) {
-  const mod = new WebAssembly.Module(bytes);
-  return new WebAssembly.Instance(mod, imports).exports;
-}
 
 function buildModule(importDecls, functionDecls) {
   const types = [...importDecls, ...functionDecls].map((f) =>
@@ -367,53 +509,61 @@ function buildModule(importDecls, functionDecls) {
   return Uint8Array.from(mod.flat(Infinity));
 }
 
-const SECTION_ID_START = 8;
+test('buildModule with imports', () => {
+  const importDecls = [
+    {
+      module: 'basicMath',
+      name: 'addOne',
+      paramTypes: [valtype.i32],
+      resultType: valtype.i32,
+    },
+  ];
+  const functionDecls = [
+    {
+      name: 'main',
+      paramTypes: [],
+      resultType: valtype.i32,
+      locals: [],
+      body: [instr.i32.const, i32(42), instr.call, funcidx(0), instr.end],
+    },
+  ];
+  const exports = loadMod(buildModule(importDecls, functionDecls), {
+    basicMath: { addOne: (x) => x + 1 },
+  });
+  assert.strictEqual(exports.main(), 43);
+});
 
-const start = funcidx;
-
-// st:start
-function startsec(st) {
-  return section(SECTION_ID_START, st);
+function loadMod(bytes, imports) {
+  const mod = new WebAssembly.Module(bytes);
+  return new WebAssembly.Instance(mod, imports).exports;
 }
 
-instr.global = {};
-instr.global.get = 0x23;
-instr.global.set = 0x24;
+function compile(source) {
+  const matchResult = wafer.match(source);
+  if (!matchResult.succeeded()) {
+    throw new Error(matchResult.message);
+  }
 
-const globalidx = u32;
+  const symbols = buildSymbolTable(wafer, matchResult);
+  const semantics = wafer.createSemantics();
+  defineToWasm(semantics, symbols);
+  defineImportDecls(semantics);
+  defineFunctionDecls(semantics, symbols);
 
-exportdesc.global = (idx) => [0x03, globalidx(idx)];
-
-const SECTION_ID_GLOBAL = 6;
-
-const mut = {
-  const: 0x00,
-  var: 0x01,
-};
-
-// t:valtype  m:mut
-function globaltype(t, m) {
-  return [t, m];
-}
-
-// gt:globaltype  e:expr
-function global(gt, e) {
-  return [gt, e];
-}
-
-// glob*:vec(global)
-function globalsec(globs) {
-  return section(SECTION_ID_GLOBAL, vec(globs));
+  const importDecls = semantics(matchResult).importDecls();
+  const functionDecls = semantics(matchResult).functionDecls();
+  return buildModule(importDecls, functionDecls);
 }
 
 function defineImportDecls(semantics) {
   semantics.addOperation('importDecls', {
-    Module(iterDeclareStatements, _) {
-      return iterDeclareStatements.children.flatMap((c) => c.importDecls());
+    Module(iterDecls, _) {
+      return iterDecls.children.flatMap((c) => c.importDecls());
     },
-    DeclareStatement(_declare, _func, ident, _l, optParams, _r, _) {
+    ExternFunctionDecl(_extern, _func, ident, _l, optParams, _r, _) {
       const name = ident.sourceString;
-      const paramTypes = getParamTypes(optParams.child(0));
+      const paramTypes =
+        optParams.numChildren === 0 ? [] : getParamTypes(optParams.child(0));
       return [
         {
           module: 'waferImports',
@@ -426,6 +576,13 @@ function defineImportDecls(semantics) {
   });
 }
 
+function getParamTypes(node) {
+  assert.strictEqual(node.ctorName, 'Params', 'Wrong node type');
+  assert.strictEqual(node.numChildren, 3, 'Wrong number of children');
+  const [first, _, iterRest] = node.children;
+  return new Array(iterRest.numChildren + 1).fill(valtype.i32);
+}
+
 function buildSymbolTable(grammar, matchResult) {
   const tempSemantics = grammar.createSemantics();
   const scopes = [new Map()];
@@ -433,7 +590,7 @@ function buildSymbolTable(grammar, matchResult) {
     _default(...children) {
       return children.forEach((c) => c.buildSymbolTable());
     },
-    DeclareStatement(_declare, _func, ident, _l, optParams, _r, _) {
+    ExternFunctionDecl(_extern, _func, ident, _l, optParams, _r, _) {
       const name = ident.sourceString;
       scopes.at(-1).set(name, new Map());
     },
@@ -465,58 +622,49 @@ function buildSymbolTable(grammar, matchResult) {
   return scopes[0];
 }
 
+test('module with imports', () => {
+  const imports = {
+    waferImports: {
+      add: (a, b) => a + b,
+      one: () => 1,
+      log: (x) => console.log(x),
+    },
+  };
+  const compileAndEval = (source) => loadMod(compile(source), imports).main();
+
+  // Make sure that code with no imports continues to work.
+  assert.strictEqual(compileAndEval(`func main() { 2 + 2 }`), 4);
+
+  // Now test some code that uses imports.
+  assert.strictEqual(
+    compileAndEval(`
+        extern func add(a, b);
+        func main() {
+          let a = 42;
+          add(a, 1)
+        }
+      `),
+    43
+  );
+  assert.strictEqual(
+    compileAndEval(`
+        extern func add(a, b);
+        extern func one();
+        func main() {
+          add(42, one())
+        }
+      `),
+    43
+  );
+});
+
 makeTestFn(import.meta.url);
-
-const SECTION_ID_MEMORY = 5;
-
-const memidx = u32;
-
-exportdesc.mem = (idx) => [0x02, memidx(idx)];
-
-function mem(memtype) {
-  return memtype;
-}
-
-function memsec(mems) {
-  return section(SECTION_ID_MEMORY, vec(mems));
-}
-
-const limits = {
-  min(n) {
-    return [0x00, u32(n)];
-  },
-  minmax(n, m) {
-    return [0x01, u32(n), u32(m)];
-  },
-};
-
-instr.i32.load = 0x28;
-instr.i32.store = 0x36;
-
-instr.i32.load8_s = 0x2c;
-instr.i32.load8_u = 0x2d;
-instr.i32.load16_s = 0x2e;
-instr.i32.load16_u = 0x2f;
-
-instr.memory = {};
-instr.memory.size = 0x3f;
-instr.memory.grow = 0x40;
-
-instr.i32.xor = 0x73;
-instr.i32.shl = 0x74;
-instr.i32.shr_s = 0x75;
-instr.i32.shr_u = 0x76;
-instr.i32.rotl = 0x77;
-instr.i32.rotr = 0x78;
 
 export {
   SECTION_ID_CODE,
   SECTION_ID_EXPORT,
   SECTION_ID_FUNCTION,
-  SECTION_ID_GLOBAL,
   SECTION_ID_IMPORT,
-  SECTION_ID_MEMORY,
-  SECTION_ID_START,
   SECTION_ID_TYPE,
   blocktype,
   buildModule,
@@ -533,32 +681,21 @@ export {
   funcidx,
   funcsec,
   functype,
-  global,
-  globalidx,
-  globalsec,
-  globaltype,
   i32,
   import_,
   importdesc,
   importsec,
   instr,
   int32ToBytes,
-  limits,
   loadMod,
   localidx,
   locals,
   magic,
   makeTestFn,
-  mem,
-  memidx,
-  memsec,
   module,
-  mut,
   name,
   resolveSymbol,
   section,
-  start,
-  startsec,
   stringToBytes,
   testExtractedExamples,
   typeidx,

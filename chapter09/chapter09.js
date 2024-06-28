@@ -1,26 +1,18 @@
 import {
   code,
   codesec,
-  import_,
-  importsec,
-  importdesc,
   export_,
   exportdesc,
   exportsec,
   func,
-  funcidx,
   funcsec,
   functype,
   i32,
   instr,
-  limits,
+  localidx,
   makeTestFn,
-  mem,
-  memidx,
-  memsec,
   module,
   section,
-  stringToBytes,
   typeidx,
   typesec,
   u32,
@@ -30,49 +22,47 @@ import {
 
 const test = makeTestFn(import.meta.url);
 
-const SECTION_ID_TABLE = 4;
+const SECTION_ID_MEMORY = 5;
 
-function tabletype(elemtype, limits) {
-  return [elemtype, limits];
+const memidx = u32;
+
+exportdesc.mem = (idx) => [0x02, memidx(idx)];
+
+function mem(memtype) {
+  return memtype;
 }
 
-function table(tabletype) {
-  return tabletype;
+function memsec(mems) {
+  return section(SECTION_ID_MEMORY, vec(mems));
 }
 
-function tablesec(tables) {
-  return section(SECTION_ID_TABLE, vec(tables));
-}
+const limits = {
+  min(n) {
+    return [0x00, u32(n)];
+  },
+  minmax(n, m) {
+    return [0x01, u32(n), u32(m)];
+  },
+};
 
-const elemtype = { funcref: 0x70 };
+instr.i32.load = 0x28;
+instr.i32.store = 0x36;
 
-const tableidx = u32;
+instr.i32.load8_s = 0x2c;
+instr.i32.load8_u = 0x2d;
+instr.i32.load16_s = 0x2e;
+instr.i32.load16_u = 0x2f;
 
-exportdesc.table = (idx) => [0x01, tableidx(idx)];
+instr.memory = {};
+instr.memory.size = 0x3f;
+instr.memory.grow = 0x40;
 
-instr.call_indirect = 0x11;
-
-const SECTION_ID_DATA = 11;
-
-// x:memidx  e:expr  b∗:vec(byte)
-function data(x, e, bs) {
-  return [x, e, vec(bs)];
-}
-
-function datasec(segs) {
-  return section(SECTION_ID_DATA, vec(segs));
-}
-
-const SECTION_ID_ELEMENT = 9;
-
-// x:tableidx  e:expr  y∗:vec(funcidx)
-function elem(x, e, ys) {
-  return [x, e, vec(ys)];
-}
-
-function elemsec(segs) {
-  return section(SECTION_ID_ELEMENT, vec(segs));
-}
+instr.i32.xor = 0x73;
+instr.i32.shl = 0x74;
+instr.i32.shr_s = 0x75;
+instr.i32.shr_u = 0x76;
+instr.i32.rotl = 0x77;
+instr.i32.rotr = 0x78;
 
 export * from './chapter08.js';
-export { elemtype, SECTION_ID_TABLE, table, tableidx, tablesec, tabletype };
+export { limits, mem, memidx, memsec, SECTION_ID_MEMORY };

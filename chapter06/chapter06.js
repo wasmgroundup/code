@@ -73,7 +73,7 @@ function defineToWasm(semantics, symbols) {
         cond.toWasm(),
         [instr.if, blocktype.empty],
         body.toWasm(),
-        [instr.br, 1],
+        [instr.br, labelidx(1)],
         instr.end, // end if
         instr.end, // end loop
       ];
@@ -296,4 +296,4 @@ function compileWhile() {
 }
 
 export * from './chapter05.js';
-export { blocktype };
+export { blocktype, defineToWasm };

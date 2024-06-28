@@ -1,0 +1,14 @@
+extern func setPixel(x, y, r, g, b, a);
+
+func draw(width, height, t) {
+  let y = 0;
+  while y < height {
+    let x = 0;
+    while x < width {
+      setPixel(x, y, t, x, y, 255);
+      x := x + 1;
+    }
+    y := y + 1;
+  }
+  0
+}
