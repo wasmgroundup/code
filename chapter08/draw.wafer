@@ -5,7 +5,11 @@ func draw(width, height, t) {
   while y < height {
     let x = 0;
     while x < width {
-      setPixel(x, y, t, x, y, 255);
+      let r = t;
+      let g = x;
+      let b = y;
+      let a = 255;
+      setPixel(x, y, r, g, b, a);
       x := x + 1;
     }
     y := y + 1;

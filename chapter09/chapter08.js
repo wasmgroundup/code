@@ -671,6 +671,7 @@ export {
   buildSymbolTable,
   code,
   codesec,
+  compile,
   defineFunctionDecls,
   defineImportDecls,
   defineToWasm,

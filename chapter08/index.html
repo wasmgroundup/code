@@ -13,8 +13,8 @@
     const backgroundImgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     function setPixel(x, y, r, g, b, a) {
-      const offset = (y * canvas.width * 4) + (x * 4);
-      const {data} = backgroundImgData;
+      const {width, data} = backgroundImgData;
+      const offset = (y * width * 4) + (x * 4);
 
       data[offset + 0] = r;
       data[offset + 1] = g;
