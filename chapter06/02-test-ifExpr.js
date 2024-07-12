@@ -61,7 +61,8 @@ const grammarDef = `
     //+ "x := 3", "y := 2 + 1"
     AssignmentExpr = identifier ":=" Expr
 
-    PrimaryExpr = number  -- num
+    PrimaryExpr = "(" Expr ")"  -- paren
+                | number
                 | CallExpr
                 | identifier  -- var
                 | IfExpr
@@ -74,7 +75,7 @@ const grammarDef = `
     //- "if x { 42 }"
     IfExpr = if Expr BlockExpr else (BlockExpr|IfExpr)
 
-    op = "+" | "-"
+    op = "+" | "-" | "*" | "/"
     number = digit+
 
     keyword = if | else | func | let
@@ -159,6 +160,9 @@ function defineToWasm(semantics, symbols) {
       const info = resolveSymbol(ident, scopes.at(-1));
       return [expr.toWasm(), instr.local.tee, localidx(info.idx)];
     },
+    PrimaryExpr_paren(_lparen, expr, _rparen) {
+      return expr.toWasm();
+    },
     CallExpr(ident, _lparen, optArgs, _rparen) {
       const name = ident.sourceString;
       const funcNames = Array.from(scopes[0].keys());
@@ -186,7 +190,17 @@ function defineToWasm(semantics, symbols) {
       return [instr.local.get, localidx(info.idx)];
     },
     op(char) {
-      return [char.sourceString === '+' ? instr.i32.add : instr.i32.sub];
+      const op = char.sourceString;
+      const instructionByOp = {
+        '+': instr.i32.add,
+        '-': instr.i32.sub,
+        '*': instr.i32.mul,
+        '/': instr.i32.div_s,
+      };
+      if (!Object.hasOwn(instructionByOp, op)) {
+        throw new Error(`Unhandled operator '${op}'`);
+      }
+      return instructionByOp[op];
     },
     number(_digits) {
       const num = parseInt(this.sourceString, 10);

@@ -58,10 +58,11 @@ const grammarDef = `
     //+ "x := 3", "y := 2 + 1"
     AssignmentExpr = identifier ":=" Expr
 
-    PrimaryExpr = number  -- num
+    PrimaryExpr = "(" Expr ")"  -- paren
+                | number
                 | identifier  -- var
 
-    op = "+" | "-"
+    op = "+" | "-" | "*" | "/"
     number = digit+
 
     //+ "x", "élan", "_", "_99"

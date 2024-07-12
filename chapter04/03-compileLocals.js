@@ -36,10 +36,11 @@ const grammarDef = `
 
     Expr = PrimaryExpr (op PrimaryExpr)*
 
-    PrimaryExpr = number  -- num
+    PrimaryExpr = "(" Expr ")"  -- paren
+                | number
                 | identifier  -- var
 
-    op = "+" | "-"
+    op = "+" | "-" | "*" | "/"
     number = digit+
 
     //+ "x", "élan", "_", "_99"

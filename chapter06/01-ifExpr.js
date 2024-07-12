@@ -61,7 +61,8 @@ const grammarDef = `
     //+ "x := 3", "y := 2 + 1"
     AssignmentExpr = identifier ":=" Expr
 
-    PrimaryExpr = number  -- num
+    PrimaryExpr = "(" Expr ")"  -- paren
+                | number
                 | CallExpr
                 | identifier  -- var
                 | IfExpr
@@ -74,7 +75,7 @@ const grammarDef = `
     //- "if x { 42 }"
     IfExpr = if Expr BlockExpr else (BlockExpr|IfExpr)
 
-    op = "+" | "-"
+    op = "+" | "-" | "*" | "/"
     number = digit+
 
     keyword = if | else | func | let

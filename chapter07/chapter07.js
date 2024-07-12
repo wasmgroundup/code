@@ -74,10 +74,11 @@ const grammarDef = `
     //+ "x := 3", "y := 2 + 1"
     AssignmentExpr = identifier ":=" Expr
 
-    PrimaryExpr = number  -- num
+    PrimaryExpr = "(" Expr ")"  -- paren
+                | number
                 | CallExpr
-                | IfExpr
                 | identifier  -- var
+                | IfExpr
 
     CallExpr = identifier "(" Args? ")"
 
@@ -87,7 +88,7 @@ const grammarDef = `
     //- "if x { 42 }"
     IfExpr = if Expr BlockExpr else (BlockExpr|IfExpr)
 
-    binaryOp = "+" | "-" | compareOp | logicalOp
+    binaryOp = "+" | "-" | "*" | "/" | compareOp | logicalOp
     compareOp = "==" | "!=" | "<=" | "<" | ">=" | ">"
     logicalOp = and | or
     number = digit+

@@ -183,6 +183,8 @@ makeTestFn(import.meta.url);
 
 instr.i32.add = 0x6a;
 instr.i32.sub = 0x6b;
+instr.i32.mul = 0x6c;
+instr.i32.div_s = 0x6d;
 
 makeTestFn(import.meta.url);
 
@@ -356,6 +358,9 @@ function defineToWasm(semantics, symbols) {
       const info = resolveSymbol(ident, scopes.at(-1));
       return [expr.toWasm(), instr.local.tee, localidx(info.idx)];
     },
+    PrimaryExpr_paren(_lparen, expr, _rparen) {
+      return expr.toWasm();
+    },
     CallExpr(ident, _lparen, optArgs, _rparen) {
       const name = ident.sourceString;
       const funcNames = Array.from(scopes[0].keys());
@@ -388,6 +393,8 @@ function defineToWasm(semantics, symbols) {
         // Arithmetic
         '+': instr.i32.add,
         '-': instr.i32.sub,
+        '*': instr.i32.mul,
+        '/': instr.i32.div_s,
         // Comparison
         '==': instr.i32.eq,
         '!=': instr.i32.ne,

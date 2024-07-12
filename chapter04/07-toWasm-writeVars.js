@@ -43,10 +43,11 @@ const grammarDef = `
     //+ "x := 3", "y := 2 + 1"
     AssignmentExpr = identifier ":=" Expr
 
-    PrimaryExpr = number  -- num
+    PrimaryExpr = "(" Expr ")"  -- paren
+                | number
                 | identifier  -- var
 
-    op = "+" | "-"
+    op = "+" | "-" | "*" | "/"
     number = digit+
 
     //+ "x", "élan", "_", "_99"
@@ -183,12 +184,25 @@ function defineToWasm(semantics, localVars) {
       const info = resolveSymbol(ident, localVars);
       return [expr.toWasm(), instr.local.tee, localidx(info.idx)];
     },
+    PrimaryExpr_paren(_lparen, expr, _rparen) {
+      return expr.toWasm();
+    },
     PrimaryExpr_var(ident) {
       const info = resolveSymbol(ident, localVars);
       return [instr.local.get, localidx(info.idx)];
     },
     op(char) {
-      return [char.sourceString === '+' ? instr.i32.add : instr.i32.sub];
+      const op = char.sourceString;
+      const instructionByOp = {
+        '+': instr.i32.add,
+        '-': instr.i32.sub,
+        '*': instr.i32.mul,
+        '/': instr.i32.div_s,
+      };
+      if (!Object.hasOwn(instructionByOp, op)) {
+        throw new Error(`Unhandled operator '${op}'`);
+      }
+      return instructionByOp[op];
     },
     number(_digits) {
       const num = parseInt(this.sourceString, 10);

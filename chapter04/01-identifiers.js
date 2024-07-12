@@ -27,9 +27,12 @@ const test = makeTestFn(import.meta.url);
 const grammarDef = `
   Wafer {
     Main = Expr
-    Expr = number (op number)*
+    Expr = PrimaryExpr (op PrimaryExpr)*
 
-    op = "+" | "-"
+    PrimaryExpr = "(" Expr ")"  -- paren
+                | number
+
+    op = "+" | "-" | "*" | "/"
     number = digit+
 
     //+ "x", "élan", "_", "_99"

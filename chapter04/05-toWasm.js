@@ -36,10 +36,11 @@ const grammarDef = `
 
     Expr = PrimaryExpr (op PrimaryExpr)*
 
-    PrimaryExpr = number  -- num
+    PrimaryExpr = "(" Expr ")"  -- paren
+                | number
                 | identifier  -- var
 
-    op = "+" | "-"
+    op = "+" | "-" | "*" | "/"
     number = digit+
 
     //+ "x", "élan", "_", "_99"
@@ -169,8 +170,21 @@ function defineToWasm(semantics, localVars) {
       }
       return result;
     },
+    PrimaryExpr_paren(_lparen, expr, _rparen) {
+      return expr.toWasm();
+    },
     op(char) {
-      return [char.sourceString === '+' ? instr.i32.add : instr.i32.sub];
+      const op = char.sourceString;
+      const instructionByOp = {
+        '+': instr.i32.add,
+        '-': instr.i32.sub,
+        '*': instr.i32.mul,
+        '/': instr.i32.div_s,
+      };
+      if (!Object.hasOwn(instructionByOp, op)) {
+        throw new Error(`Unhandled operator '${op}'`);
+      }
+      return instructionByOp[op];
     },
     number(_digits) {
       const num = parseInt(this.sourceString, 10);
