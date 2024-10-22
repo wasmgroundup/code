@@ -20,7 +20,7 @@ import {
   typesec,
   u32,
   valtype,
-} from './chapter03.js';
+} from '../chapter03.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -86,8 +86,8 @@ function compileLocals() {
             [instr.local.get, localidx(1)],
             instr.i32.add,
             instr.end,
-          ]
-        )
+          ],
+        ),
       ),
     ]),
   ]);

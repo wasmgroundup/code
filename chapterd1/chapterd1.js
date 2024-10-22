@@ -15,7 +15,7 @@ import {
   typeidx,
   typesec,
   valtype,
-} from './chapter02.js';
+} from '../chapter02.js';
 
 const test = makeTestFn(import.meta.url);
 

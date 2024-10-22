@@ -20,7 +20,7 @@ import {
   typesec,
   u32,
   valtype,
-} from './chapter03.js';
+} from '../chapter03.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -86,8 +86,8 @@ function compileLocals() {
             [instr.local.get, localidx(1)],
             instr.i32.add,
             instr.end,
-          ]
-        )
+          ],
+        ),
       ),
     ]),
   ]);
@@ -110,7 +110,7 @@ function buildSymbolTable(grammar, matchResult) {
     LetStatement(_let, id, _eq, _expr, _) {
       const name = id.sourceString;
       const idx = symbols.get('main').size;
-      const info = { name, idx, what: 'local' };
+      const info = {name, idx, what: 'local'};
       symbols.get('main').set(name, info);
     },
   });
@@ -140,10 +140,10 @@ test('symbol table', () => {
 
   const symbols = buildSymbolTable(
     wafer,
-    wafer.match('let x = 0; let y = 1; 42')
+    wafer.match('let x = 0; let y = 1; 42'),
   );
   const localVars = symbols.get('main');
-  assert.strictEqual(resolveSymbol({ sourceString: 'x' }, localVars).idx, 0);
-  assert.strictEqual(resolveSymbol({ sourceString: 'y' }, localVars).idx, 1);
-  assert.throws(() => resolveSymbol({ sourceString: 'z' }, localVars));
+  assert.strictEqual(resolveSymbol({sourceString: 'x'}, localVars).idx, 0);
+  assert.strictEqual(resolveSymbol({sourceString: 'y'}, localVars).idx, 1);
+  assert.throws(() => resolveSymbol({sourceString: 'z'}, localVars));
 });

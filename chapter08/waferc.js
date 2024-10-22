@@ -1,7 +1,7 @@
 import fs from 'node:fs';
-import { basename, dirname, extname, join } from 'node:path';
+import {basename, dirname, extname, join} from 'node:path';
 
-import { compile } from './chapter07.js';
+import {compile} from '../chapter07.js';
 
 const filePath = process.argv[2];
 const ext = extname(filePath);

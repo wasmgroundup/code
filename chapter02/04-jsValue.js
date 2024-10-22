@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import * as ohm from 'ohm-js';
-import { extractExamples } from 'ohm-js/extras';
+import {extractExamples} from 'ohm-js/extras';
 
 import {
   code,
@@ -17,9 +17,20 @@ import {
   module,
   typeidx,
   typesec,
-} from './chapter01.js';
+} from '../chapter01.js';
 
 const test = makeTestFn(import.meta.url);
+
+const grammarDef = `
+    Wafer {
+      Main = number
+      number = digit+
+
+      // Examples:
+      //+ "42", "1"
+      //- "abc"
+    }
+  `;
 
 function testExtractedExamples(grammarSource) {
   const grammar = ohm.grammar(grammarSource);
@@ -28,17 +39,6 @@ function testExtractedExamples(grammarSource) {
     assert.strictEqual(result.succeeded(), ex.shouldMatch, JSON.stringify(ex));
   }
 }
-
-const grammarDef = `
-  Wafer {
-    Main = number
-    number = digit+
-
-    // Examples:
-    //+ "42", "1"
-    //- "abc"
-  }
-`;
 
 test('Extracted examples', () => testExtractedExamples(grammarDef));
 

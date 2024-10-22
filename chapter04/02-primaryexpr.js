@@ -20,7 +20,7 @@ import {
   typesec,
   u32,
   valtype,
-} from './chapter03.js';
+} from '../chapter03.js';
 
 const test = makeTestFn(import.meta.url);
 

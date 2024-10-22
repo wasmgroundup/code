@@ -1,0 +1,8 @@
+{
+  "experimentalTernaries": true,
+  "quoteProps": "consistent",
+  "trailingComma": "all",
+  "singleQuote": true,
+  "printWidth": 80,
+  "bracketSpacing": false
+}

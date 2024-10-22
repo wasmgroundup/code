@@ -1,20 +1,23 @@
 import assert from 'node:assert';
 import * as ohm from 'ohm-js';
 
-import {i32, instr, makeTestFn, testExtractedExamples} from '../chapter02.js';
+import {i32, instr, makeTestFn, testExtractedExamples} from './chapter02.js';
 
 const test = makeTestFn(import.meta.url);
 
 const grammarDef = `
   Wafer {
     Main = Expr
-    Expr = number (op number)*
+    Expr = PrimaryExpr (op PrimaryExpr)*
 
-    op = "+" | "-"
+    PrimaryExpr = "(" Expr ")"  -- paren
+                | number
+
+    op = "+" | "-" | "*" | "/"
     number = digit+
 
     // Examples:
-    //+ "42", "1", "66 + 99", "1 + 2 - 3"
+    //+ "42", "1", "66 + 99", "1 + 2 - 3", "1 + (2 * 3)", "(((1) / 2))"
     //- "abc"
   }
 `;
@@ -48,8 +51,21 @@ semantics.addOperation('toWasm', {
     }
     return result;
   },
+  PrimaryExpr_paren(_lparen, expr, _rparen) {
+    return expr.toWasm();
+  },
   op(char) {
-    return [char.sourceString === '+' ? instr.i32.add : instr.i32.sub];
+    const op = char.sourceString;
+    const instructionByOp = {
+      '+': instr.i32.add,
+      '-': instr.i32.sub,
+      '*': instr.i32.mul,
+      '/': instr.i32.div_s,
+    };
+    if (!Object.hasOwn(instructionByOp, op)) {
+      throw new Error(`Unhandled operator '${op}'`);
+    }
+    return instructionByOp[op];
   },
   number(digits) {
     const num = this.jsValue();
@@ -59,6 +75,8 @@ semantics.addOperation('toWasm', {
 
 instr.i32.add = 0x6a;
 instr.i32.sub = 0x6b;
+instr.i32.mul = 0x6c;
+instr.i32.div_s = 0x6d;
 
 function toWasmFlat(input) {
   const matchResult = wafer.match(input);
@@ -88,4 +106,17 @@ test('toWasm bytecodes', () => {
       instr.end,
     ].flat(),
   );
+  assert.deepEqual(
+    toWasmFlat('6 / (2 * 1)'),
+    [
+      [instr.i32.const, 6],
+      [instr.i32.const, 2],
+      [instr.i32.const, 1],
+      instr.i32.mul,
+      instr.i32.div_s,
+      instr.end,
+    ].flat(),
+  );
 });
+
+export * from './chapter02.js';

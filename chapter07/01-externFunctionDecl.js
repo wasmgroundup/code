@@ -24,7 +24,7 @@ import {
   typesec,
   valtype,
   vec,
-} from './chapter06.js';
+} from '../chapter06.js';
 
 const test = makeTestFn(import.meta.url);
 

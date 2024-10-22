@@ -19,18 +19,57 @@ import {
   locals,
   makeTestFn,
   module,
-  name,
   resolveSymbol,
-  section,
   testExtractedExamples,
   typeidx,
   typesec,
-  u32,
   valtype,
-  vec,
-} from './chapter04.js';
+} from '../chapter04.js';
 
 const test = makeTestFn(import.meta.url);
+
+function buildModule(functionDecls) {
+  const types = functionDecls.map((f) =>
+    functype(f.paramTypes, [f.resultType]),
+  );
+  const funcs = functionDecls.map((f, i) => typeidx(i));
+  const codes = functionDecls.map((f) => code(func(f.locals, f.body)));
+  const exports = functionDecls.map((f, i) =>
+    export_(f.name, exportdesc.func(i)),
+  );
+
+  const mod = module([
+    typesec(types),
+    funcsec(funcs),
+    exportsec(exports),
+    codesec(codes),
+  ]);
+  return Uint8Array.from(mod.flat(Infinity));
+}
+
+test('buildModule', () => {
+  const functionDecls = [
+    {
+      name: 'main',
+      paramTypes: [],
+      resultType: valtype.i32,
+      locals: [locals(1, valtype.i32)],
+      body: [instr.i32.const, i32(42), instr.call, funcidx(1), instr.end],
+    },
+    {
+      name: 'backup',
+      paramTypes: [valtype.i32],
+      resultType: valtype.i32,
+      locals: [],
+      body: [instr.i32.const, i32(43), instr.end],
+    },
+  ];
+  const exports = loadMod(buildModule(functionDecls));
+  assert.strictEqual(exports.main(), 43);
+  assert.strictEqual(exports.backup(), 43);
+});
+
+instr.call = 0x10;
 
 const grammarDef = `
   Wafer {
@@ -84,66 +123,6 @@ const grammarDef = `
 test('extracted examples', () => testExtractedExamples(grammarDef));
 
 const wafer = ohm.grammar(grammarDef);
-
-function compile(source) {
-  const matchResult = wafer.match(source);
-  if (!matchResult.succeeded()) {
-    throw new Error(matchResult.message);
-  }
-
-  const symbols = buildSymbolTable(wafer, matchResult);
-  const semantics = wafer.createSemantics();
-  defineToWasm(semantics, symbols);
-  defineFunctionDecls(semantics, symbols);
-
-  const functionDecls = semantics(matchResult).functionDecls();
-  return buildModule(functionDecls);
-}
-
-function buildModule(functionDecls) {
-  const types = functionDecls.map((f) =>
-    functype(f.paramTypes, [f.resultType])
-  );
-  const funcs = functionDecls.map((f, i) => typeidx(i));
-  const codes = functionDecls.map((f) => code(func(f.locals, f.body)));
-  const exports = functionDecls.map((f, i) =>
-    export_(f.name, exportdesc.func(i))
-  );
-
-  const mod = module([
-    typesec(types),
-    funcsec(funcs),
-    exportsec(exports),
-    codesec(codes),
-  ]);
-  return Uint8Array.from(mod.flat(Infinity));
-}
-
-test('buildModule', () => {
-  const functionDecls = [
-    {
-      name: 'main',
-      paramTypes: [],
-      resultType: valtype.i32,
-      locals: [locals(1, valtype.i32)],
-      body: [instr.i32.const, i32(42), instr.call, funcidx(1), instr.end],
-    },
-    {
-      name: 'backup',
-      paramTypes: [valtype.i32],
-      resultType: valtype.i32,
-      locals: [],
-      body: [instr.i32.const, i32(43), instr.end],
-    },
-  ];
-  const exports = loadMod(buildModule(functionDecls));
-  assert.strictEqual(exports.main(), 43);
-  assert.strictEqual(exports.backup(), 43);
-});
-
-instr.call = 0x10;
-
-test('Extracted examples', () => testExtractedExamples(grammarDef));
 
 function defineToWasm(semantics, symbols) {
   const scopes = [symbols];
@@ -207,7 +186,7 @@ function defineToWasm(semantics, symbols) {
 test('toWasm bytecodes - locals & assignment', () => {
   assert.deepEqual(
     toWasmFlat('func main() { 42 }'),
-    [[instr.i32.const, 42], instr.end].flat()
+    [[instr.i32.const, 42], instr.end].flat(),
   );
   assert.deepEqual(
     toWasmFlat('func main() { let x = 0; 42 }'),
@@ -216,7 +195,7 @@ test('toWasm bytecodes - locals & assignment', () => {
       [instr.local.set, 0],
       [instr.i32.const, 42],
       instr.end,
-    ].flat()
+    ].flat(),
   );
   assert.deepEqual(
     toWasmFlat('func main() { let x = 0; x }'),
@@ -225,7 +204,7 @@ test('toWasm bytecodes - locals & assignment', () => {
       [instr.local.set, 0],
       [instr.local.get, 0],
       instr.end,
-    ].flat()
+    ].flat(),
   );
   assert.deepEqual(
     toWasmFlat('func f1(a) { let x = 12; x }'),
@@ -234,7 +213,7 @@ test('toWasm bytecodes - locals & assignment', () => {
       [instr.local.set, 1], // set `x`
       [instr.local.get, 1], // get `x`
       instr.end,
-    ].flat()
+    ].flat(),
   );
   assert.deepEqual(
     toWasmFlat('func f2(a, b) { let x = 12; b }'),
@@ -243,7 +222,7 @@ test('toWasm bytecodes - locals & assignment', () => {
       [instr.local.set, 2], // set `x`
       [instr.local.get, 1], // get `b`
       instr.end,
-    ].flat()
+    ].flat(),
   );
 });
 
@@ -275,19 +254,34 @@ function buildSymbolTable(grammar, matchResult) {
       for (const id of [ident, ...iterIdent.children]) {
         const name = id.sourceString;
         const idx = scopes.at(-1).size;
-        const info = { name, idx, what: 'param' };
+        const info = {name, idx, what: 'param'};
         scopes.at(-1).set(name, info);
       }
     },
     LetStatement(_let, id, _eq, _expr, _) {
       const name = id.sourceString;
       const idx = scopes.at(-1).size;
-      const info = { name, idx, what: 'local' };
+      const info = {name, idx, what: 'local'};
       scopes.at(-1).set(name, info);
     },
   });
   tempSemantics(matchResult).buildSymbolTable();
   return scopes[0];
+}
+
+function compile(source) {
+  const matchResult = wafer.match(source);
+  if (!matchResult.succeeded()) {
+    throw new Error(matchResult.message);
+  }
+
+  const symbols = buildSymbolTable(wafer, matchResult);
+  const semantics = wafer.createSemantics();
+  defineToWasm(semantics, symbols);
+  defineFunctionDecls(semantics, symbols);
+
+  const functionDecls = semantics(matchResult).functionDecls();
+  return buildModule(functionDecls);
 }
 
 function defineFunctionDecls(semantics, symbols) {
@@ -301,7 +295,7 @@ function defineFunctionDecls(semantics, symbols) {
       const params = localVars.filter((info) => info.what === 'param');
       const paramTypes = params.map((_) => valtype.i32);
       const varsCount = localVars.filter(
-        (info) => info.what === 'local'
+        (info) => info.what === 'local',
       ).length;
       return [
         {
@@ -319,6 +313,6 @@ function defineFunctionDecls(semantics, symbols) {
 test('module with multiple functions', () => {
   assert.deepEqual(
     loadMod(compile('func main() { let x = 42; x }')).main(),
-    42
+    42,
   );
 });

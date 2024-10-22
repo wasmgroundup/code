@@ -24,7 +24,7 @@ import {
   typesec,
   valtype,
   vec,
-} from './chapter06.js';
+} from '../chapter06.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -140,15 +140,15 @@ const importdesc = {
 
 function buildModule(importDecls, functionDecls) {
   const types = [...importDecls, ...functionDecls].map((f) =>
-    functype(f.paramTypes, [f.resultType])
+    functype(f.paramTypes, [f.resultType]),
   );
   const imports = importDecls.map((f, i) =>
-    import_(f.module, f.name, importdesc.func(i))
+    import_(f.module, f.name, importdesc.func(i)),
   );
   const funcs = functionDecls.map((f, i) => typeidx(i + importDecls.length));
   const codes = functionDecls.map((f) => code(func(f.locals, f.body)));
   const exports = functionDecls.map((f, i) =>
-    export_(f.name, exportdesc.func(i + importDecls.length))
+    export_(f.name, exportdesc.func(i + importDecls.length)),
   );
 
   const mod = module([
@@ -180,7 +180,7 @@ test('buildModule with imports', () => {
     },
   ];
   const exports = loadMod(buildModule(importDecls, functionDecls), {
-    basicMath: { addOne: (x) => x + 1 },
+    basicMath: {addOne: (x) => x + 1},
   });
   assert.strictEqual(exports.main(), 43);
 });

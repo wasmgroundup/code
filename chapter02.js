@@ -17,7 +17,7 @@ import {
   module,
   typeidx,
   typesec,
-} from '../chapter01.js';
+} from './chapter01.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -110,3 +110,6 @@ test('toWasm', async () => {
   assert.equal(loadMod(compile('0')).main(), 0);
   assert.equal(loadMod(compile('31')).main(), 31);
 });
+
+export * from './chapter01.js';
+export {loadMod, testExtractedExamples, valtype};

@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import * as ohm from 'ohm-js';
 
 import {
-  buildSymbolTable,
+  // buildSymbolTable,
   code,
   codesec,
   export_,
@@ -24,7 +24,7 @@ import {
   typeidx,
   typesec,
   valtype,
-} from '../chapter04.js';
+} from './chapter04.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -103,7 +103,12 @@ const grammarDef = `
 
     PrimaryExpr = "(" Expr ")"  -- paren
                 | number
+                | CallExpr
                 | identifier  -- var
+
+    CallExpr = identifier "(" Args? ")"
+
+    Args = Expr ("," Expr)*
 
     op = "+" | "-" | "*" | "/"
     number = digit+
@@ -159,6 +164,18 @@ function defineToWasm(semantics, symbols) {
     PrimaryExpr_paren(_lparen, expr, _rparen) {
       return expr.toWasm();
     },
+    CallExpr(ident, _lparen, optArgs, _rparen) {
+      const name = ident.sourceString;
+      const funcNames = Array.from(scopes[0].keys());
+      const idx = funcNames.indexOf(name);
+      return [
+        optArgs.children.map((c) => c.toWasm()),
+        [instr.call, funcidx(idx)],
+      ];
+    },
+    Args(exp, _, iterExp) {
+      return [exp, ...iterExp.children].map((c) => c.toWasm());
+    },
     PrimaryExpr_var(ident) {
       const info = resolveSymbol(ident, scopes.at(-1));
       return [instr.local.get, localidx(info.idx)];
@@ -206,6 +223,24 @@ test('toWasm bytecodes - locals & assignment', () => {
       instr.end,
     ].flat(),
   );
+  assert.deepEqual(
+    toWasmFlat('func f1(a) { let x = 12; x }'),
+    [
+      [instr.i32.const, 12],
+      [instr.local.set, 1], // set `x`
+      [instr.local.get, 1], // get `x`
+      instr.end,
+    ].flat(),
+  );
+  assert.deepEqual(
+    toWasmFlat('func f2(a, b) { let x = 12; b }'),
+    [
+      [instr.i32.const, 12],
+      [instr.local.set, 2], // set `x`
+      [instr.local.get, 1], // get `b`
+      instr.end,
+    ].flat(),
+  );
 });
 
 function toWasmFlat(input) {
@@ -215,3 +250,95 @@ function toWasmFlat(input) {
   defineToWasm(semantics, symbols);
   return semantics(matchResult).toWasm().flat(Infinity);
 }
+
+function buildSymbolTable(grammar, matchResult) {
+  const tempSemantics = grammar.createSemantics();
+  const scopes = [new Map()];
+  tempSemantics.addOperation('buildSymbolTable', {
+    _default(...children) {
+      return children.forEach((c) => c.buildSymbolTable());
+    },
+    FunctionDecl(_func, ident, _lparen, optParams, _rparen, blockExpr) {
+      const name = ident.sourceString;
+      const locals = new Map();
+      scopes.at(-1).set(name, locals);
+      scopes.push(locals);
+      optParams.child(0)?.buildSymbolTable();
+      blockExpr.buildSymbolTable();
+      scopes.pop();
+    },
+    Params(ident, _, iterIdent) {
+      for (const id of [ident, ...iterIdent.children]) {
+        const name = id.sourceString;
+        const idx = scopes.at(-1).size;
+        const info = {name, idx, what: 'param'};
+        scopes.at(-1).set(name, info);
+      }
+    },
+    LetStatement(_let, id, _eq, _expr, _) {
+      const name = id.sourceString;
+      const idx = scopes.at(-1).size;
+      const info = {name, idx, what: 'local'};
+      scopes.at(-1).set(name, info);
+    },
+  });
+  tempSemantics(matchResult).buildSymbolTable();
+  return scopes[0];
+}
+
+function compile(source) {
+  const matchResult = wafer.match(source);
+  if (!matchResult.succeeded()) {
+    throw new Error(matchResult.message);
+  }
+
+  const symbols = buildSymbolTable(wafer, matchResult);
+  const semantics = wafer.createSemantics();
+  defineToWasm(semantics, symbols);
+  defineFunctionDecls(semantics, symbols);
+
+  const functionDecls = semantics(matchResult).functionDecls();
+  return buildModule(functionDecls);
+}
+
+function defineFunctionDecls(semantics, symbols) {
+  semantics.addOperation('functionDecls', {
+    _default(...children) {
+      return children.flatMap((c) => c.functionDecls());
+    },
+    FunctionDecl(_func, ident, _l, _params, _r, _blockExpr) {
+      const name = ident.sourceString;
+      const localVars = Array.from(symbols.get(name).values());
+      const params = localVars.filter((info) => info.what === 'param');
+      const paramTypes = params.map((_) => valtype.i32);
+      const varsCount = localVars.filter(
+        (info) => info.what === 'local',
+      ).length;
+      return [
+        {
+          name,
+          paramTypes,
+          resultType: valtype.i32,
+          locals: [locals(varsCount, valtype.i32)],
+          body: this.toWasm(),
+        },
+      ];
+    },
+  });
+}
+
+test('module with multiple functions', () => {
+  assert.deepEqual(
+    loadMod(compile('func main() { let x = 42; x }')).main(),
+    42,
+  );
+  assert.deepEqual(
+    loadMod(
+      compile('func doIt() { add(1, 2) } func add(x, y) { x + y }'),
+    ).doIt(),
+    3,
+  );
+});
+
+export * from './chapter04.js';
+export {buildModule, buildSymbolTable, defineFunctionDecls, defineToWasm};

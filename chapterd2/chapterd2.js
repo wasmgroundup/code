@@ -155,7 +155,7 @@ i32.const = (v) =>
   new Instruction(`i32.const`, [new ConstOp(`Push value ${v}`, i32(v))]);
 
 const ASSERT_TOP_I32 = new Op('Assert Value Type i32', (vm) =>
-  vm.assertTopValueOfType(I32)
+  vm.assertTopValueOfType(I32),
 );
 
 const POP_TO_C1 = new Op('Pop to c1', (vm) => vm.popValueIntoC1());

@@ -20,7 +20,7 @@ import {
   typesec,
   u32,
   valtype,
-} from '../chapter03.js';
+} from './chapter03.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -29,12 +29,19 @@ const grammarDef = `
     Main = Statement* Expr
 
     Statement = LetStatement
+              | ExprStatement
 
     //+ "let x = 3 + 4;", "let distance = 100 + 2;"
     //- "let y;"
     LetStatement = "let" identifier "=" Expr ";"
 
-    Expr = PrimaryExpr (op PrimaryExpr)*
+    ExprStatement = Expr ";"
+
+    Expr = AssignmentExpr  -- assignment
+          | PrimaryExpr (op PrimaryExpr)*  -- arithmetic
+
+    //+ "x := 3", "y := 2 + 1"
+    AssignmentExpr = identifier ":=" Expr
 
     PrimaryExpr = "(" Expr ")"  -- paren
                 | number
@@ -161,7 +168,10 @@ function defineToWasm(semantics, localVars) {
       const info = resolveSymbol(ident, localVars);
       return [expr.toWasm(), instr.local.set, localidx(info.idx)];
     },
-    Expr(num, iterOps, iterOperands) {
+    ExprStatement(expr, _) {
+      return [expr.toWasm(), instr.drop];
+    },
+    Expr_arithmetic(num, iterOps, iterOperands) {
       const result = [num.toWasm()];
       for (let i = 0; i < iterOps.numChildren; i++) {
         const op = iterOps.child(i);
@@ -169,6 +179,10 @@ function defineToWasm(semantics, localVars) {
         result.push(operand.toWasm(), op.toWasm());
       }
       return result;
+    },
+    AssignmentExpr(ident, _, expr) {
+      const info = resolveSymbol(ident, localVars);
+      return [expr.toWasm(), instr.local.tee, localidx(info.idx)];
     },
     PrimaryExpr_paren(_lparen, expr, _rparen) {
       return expr.toWasm();
@@ -219,8 +233,54 @@ test('toWasm bytecodes - locals & assignment', () => {
     toWasmFlat('let x = 10; x'),
     [
       [instr.i32.const, 10, instr.local.set, 0], // let x = 10;
+      [instr.local.get, 0],
+      instr.end,
+    ].flat(),
+  );
+  assert.deepEqual(
+    toWasmFlat('let x = 10; x := 9; x'),
+    [
+      [instr.i32.const, 10, instr.local.set, 0], // let x = 10;
+      [instr.i32.const, 9, instr.local.tee, 0, instr.drop], // x := 9;
       [instr.local.get, 0], // x
       instr.end,
     ].flat(),
   );
 });
+
+instr.drop = 0x1a;
+
+function compile(source) {
+  const matchResult = wafer.match(source);
+  if (!matchResult.succeeded()) {
+    throw new Error(matchResult.message);
+  }
+
+  const semantics = wafer.createSemantics();
+  const symbols = buildSymbolTable(wafer, matchResult);
+  const localVars = symbols.get('main');
+  defineToWasm(semantics, localVars);
+
+  const mainFn = func(
+    [locals(localVars.size, valtype.i32)],
+    semantics(matchResult).toWasm(),
+  );
+  const mod = module([
+    typesec([functype([], [valtype.i32])]),
+    funcsec([typeidx(0)]),
+    exportsec([export_('main', exportdesc.func(0))]),
+    codesec([code(mainFn)]),
+  ]);
+  return Uint8Array.from(mod.flat(Infinity));
+}
+
+test('module with locals & assignment', () => {
+  assert.deepEqual(loadMod(compile('let x = 42; x')).main(), 42);
+  assert.deepEqual(
+    loadMod(compile('let a = 13; let b = 15; a := 10; a + b')).main(),
+    25,
+  );
+});
+
+export * from './chapter03.js';
+export {buildSymbolTable, resolveSymbol, locals, localidx};

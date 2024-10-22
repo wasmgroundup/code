@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import * as ohm from 'ohm-js';
 
-import { i32, instr, makeTestFn, testExtractedExamples } from './chapter02.js';
+import {i32, instr, makeTestFn, testExtractedExamples} from '../chapter02.js';
 
 const test = makeTestFn(import.meta.url);
 

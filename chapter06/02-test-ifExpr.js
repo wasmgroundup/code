@@ -4,30 +4,18 @@ import * as ohm from 'ohm-js';
 import {
   buildModule,
   buildSymbolTable,
-  code,
-  codesec,
   defineFunctionDecls,
-  export_,
-  exportdesc,
-  exportsec,
-  func,
   funcidx,
-  funcsec,
-  functype,
   i32,
   instr,
   loadMod,
   localidx,
-  locals,
   makeTestFn,
-  module,
   resolveSymbol,
   testExtractedExamples,
-  typeidx,
-  typesec,
   u32,
   valtype,
-} from './chapter05.js';
+} from '../chapter05.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -103,30 +91,7 @@ const wafer = ohm.grammar(grammarDef);
 instr.if = 0x04;
 instr.else = 0x05;
 
-const blocktype = { empty: 0x40, ...valtype };
-
-test('if expressions', () => {
-  const functionDecls = [
-    {
-      name: 'choose',
-      paramTypes: [valtype.i32],
-      resultType: valtype.i32,
-      locals: [],
-      body: [
-        [instr.local.get, localidx(0)], // Load the argument.
-        [instr.if, valtype.i32],
-        [instr.i32.const, i32(42)],
-        instr.else,
-        [instr.i32.const, i32(43)],
-        instr.end, // end if
-        instr.end,
-      ],
-    },
-  ];
-  const exports = loadMod(buildModule(functionDecls));
-  assert.strictEqual(exports.choose(1), 42);
-  assert.strictEqual(exports.choose(0), 43);
-});
+const blocktype = {empty: 0x40, ...valtype};
 
 function defineToWasm(semantics, symbols) {
   const scopes = [symbols];
@@ -235,7 +200,7 @@ test('Wafer if expressions', () => {
           let result = if x { 0 } else { 1 };
           result
         }
-      `)
+      `),
   );
   assert.strictEqual(mod.isZero(1), 0);
   assert.strictEqual(mod.isZero(0), 1);

@@ -140,15 +140,15 @@ const importdesc = {
 
 function buildModule(importDecls, functionDecls) {
   const types = [...importDecls, ...functionDecls].map((f) =>
-    functype(f.paramTypes, [f.resultType])
+    functype(f.paramTypes, [f.resultType]),
   );
   const imports = importDecls.map((f, i) =>
-    import_(f.module, f.name, importdesc.func(i))
+    import_(f.module, f.name, importdesc.func(i)),
   );
   const funcs = functionDecls.map((f, i) => typeidx(i + importDecls.length));
   const codes = functionDecls.map((f) => code(func(f.locals, f.body)));
   const exports = functionDecls.map((f, i) =>
-    export_(f.name, exportdesc.func(i + importDecls.length))
+    export_(f.name, exportdesc.func(i + importDecls.length)),
   );
 
   const mod = module([
@@ -180,7 +180,7 @@ test('buildModule with imports', () => {
     },
   ];
   const exports = loadMod(buildModule(importDecls, functionDecls), {
-    basicMath: { addOne: (x) => x + 1 },
+    basicMath: {addOne: (x) => x + 1},
   });
   assert.strictEqual(exports.main(), 43);
 });
@@ -259,14 +259,14 @@ function buildSymbolTable(grammar, matchResult) {
       for (const id of [ident, ...iterIdent.children]) {
         const name = id.sourceString;
         const idx = scopes.at(-1).size;
-        const info = { name, idx, what: 'param' };
+        const info = {name, idx, what: 'param'};
         scopes.at(-1).set(name, info);
       }
     },
     LetStatement(_let, id, _eq, _expr, _) {
       const name = id.sourceString;
       const idx = scopes.at(-1).size;
-      const info = { name, idx, what: 'local' };
+      const info = {name, idx, what: 'local'};
       scopes.at(-1).set(name, info);
     },
   });
@@ -279,7 +279,6 @@ test('module with imports', () => {
     waferImports: {
       add: (a, b) => a + b,
       one: () => 1,
-      log: (x) => console.log(x),
     },
   };
   const compileAndEval = (source) => loadMod(compile(source), imports).main();
@@ -296,7 +295,7 @@ test('module with imports', () => {
           add(a, 1)
         }
       `),
-    43
+    43,
   );
   assert.strictEqual(
     compileAndEval(`
@@ -306,10 +305,10 @@ test('module with imports', () => {
           add(42, one())
         }
       `),
-    43
+    43,
   );
 });
 
 export * from './chapter06.js';
-export { import_, importdesc, importsec, SECTION_ID_IMPORT };
-export { buildModule, buildSymbolTable, compile, defineImportDecls, loadMod };
+export {import_, importdesc, importsec, SECTION_ID_IMPORT};
+export {buildModule, buildSymbolTable, compile, defineImportDecls, loadMod};

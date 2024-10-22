@@ -4,30 +4,18 @@ import * as ohm from 'ohm-js';
 import {
   buildModule,
   buildSymbolTable,
-  code,
-  codesec,
   defineFunctionDecls,
-  export_,
-  exportdesc,
-  exportsec,
-  func,
   funcidx,
-  funcsec,
-  functype,
   i32,
   instr,
   loadMod,
   localidx,
-  locals,
   makeTestFn,
-  module,
   resolveSymbol,
   testExtractedExamples,
-  typeidx,
-  typesec,
   u32,
   valtype,
-} from './chapter05.js';
+} from '../chapter05.js';
 
 const test = makeTestFn(import.meta.url);
 

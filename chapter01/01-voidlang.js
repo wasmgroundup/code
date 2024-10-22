@@ -1,7 +1,15 @@
 import assert from 'node:assert';
 import process from 'node:process';
-import { default as nodeTest } from 'node:test';
-import { fileURLToPath } from 'node:url';
+import {default as nodeTest} from 'node:test';
+import {fileURLToPath} from 'node:url';
+
+function compileVoidLang(code) {
+  if (code === '') {
+    return Uint8Array.from([0, 97, 115, 109, 1, 0, 0, 0]);
+  } else {
+    throw new Error(`Expected empty code, got: "${code}"`);
+  }
+}
 
 function makeTestFn(url) {
   if (process.env.NODE_TEST_CONTEXT && process.argv[1] === fileURLToPath(url)) {
@@ -12,24 +20,8 @@ function makeTestFn(url) {
 
 const test = makeTestFn(import.meta.url);
 
-function compileVoidLang(code) {
-  if (code === '') {
-    return Uint8Array.from([0, 97, 115, 109, 1, 0, 0, 0]);
-  } else {
-    throw new Error(`Expected empty code, got: "${code}"`);
-  }
-}
-
-test('compileVoidLang works for empty string', () => {
-  const bytes = compileVoidLang('');
-  assert.strictEqual(ArrayBuffer.isView(bytes), true);
-  assert.throws(() => compileVoidLang('42'));
-});
-
 test('compileVoidLang result compiles to a WebAssembly object', async () => {
-  const { instance, module } = await WebAssembly.instantiate(
-    compileVoidLang('')
-  );
+  const {instance, module} = await WebAssembly.instantiate(compileVoidLang(''));
 
   assert.strictEqual(instance instanceof WebAssembly.Instance, true);
   assert.strictEqual(module instanceof WebAssembly.Module, true);

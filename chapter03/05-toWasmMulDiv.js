@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import * as ohm from 'ohm-js';
 
-import { i32, instr, makeTestFn, testExtractedExamples } from './chapter02.js';
+import {i32, instr, makeTestFn, testExtractedExamples} from '../chapter02.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -93,7 +93,7 @@ test('toWasm bytecodes', () => {
       [instr.i32.const, 2],
       instr.i32.add,
       instr.end,
-    ].flat()
+    ].flat(),
   );
   assert.deepEqual(
     toWasmFlat('7 - 3 + 11'),
@@ -104,7 +104,7 @@ test('toWasm bytecodes', () => {
       [instr.i32.const, 11],
       instr.i32.add,
       instr.end,
-    ].flat()
+    ].flat(),
   );
   assert.deepEqual(
     toWasmFlat('6 / (2 * 1)'),
@@ -115,6 +115,6 @@ test('toWasm bytecodes', () => {
       instr.i32.mul,
       instr.i32.div_s,
       instr.end,
-    ].flat()
+    ].flat(),
   );
 });

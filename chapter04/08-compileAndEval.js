@@ -20,7 +20,7 @@ import {
   typesec,
   u32,
   valtype,
-} from './chapter03.js';
+} from '../chapter03.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -93,8 +93,8 @@ function compileLocals() {
             [instr.local.get, localidx(1)],
             instr.i32.add,
             instr.end,
-          ]
-        )
+          ],
+        ),
       ),
     ]),
   ]);
@@ -117,7 +117,7 @@ function buildSymbolTable(grammar, matchResult) {
     LetStatement(_let, id, _eq, _expr, _) {
       const name = id.sourceString;
       const idx = symbols.get('main').size;
-      const info = { name, idx, what: 'local' };
+      const info = {name, idx, what: 'local'};
       symbols.get('main').set(name, info);
     },
   });
@@ -147,12 +147,12 @@ test('symbol table', () => {
 
   const symbols = buildSymbolTable(
     wafer,
-    wafer.match('let x = 0; let y = 1; 42')
+    wafer.match('let x = 0; let y = 1; 42'),
   );
   const localVars = symbols.get('main');
-  assert.strictEqual(resolveSymbol({ sourceString: 'x' }, localVars).idx, 0);
-  assert.strictEqual(resolveSymbol({ sourceString: 'y' }, localVars).idx, 1);
-  assert.throws(() => resolveSymbol({ sourceString: 'z' }, localVars));
+  assert.strictEqual(resolveSymbol({sourceString: 'x'}, localVars).idx, 0);
+  assert.strictEqual(resolveSymbol({sourceString: 'y'}, localVars).idx, 1);
+  assert.throws(() => resolveSymbol({sourceString: 'z'}, localVars));
 });
 
 function defineToWasm(semantics, localVars) {
@@ -227,7 +227,7 @@ test('toWasm bytecodes - locals & assignment', () => {
       [instr.i32.const, 10, instr.local.set, 0], // let x = 10;
       [instr.i32.const, 42],
       instr.end,
-    ].flat()
+    ].flat(),
   );
   assert.deepEqual(
     toWasmFlat('let x = 10; x'),
@@ -235,7 +235,7 @@ test('toWasm bytecodes - locals & assignment', () => {
       [instr.i32.const, 10, instr.local.set, 0], // let x = 10;
       [instr.local.get, 0],
       instr.end,
-    ].flat()
+    ].flat(),
   );
   assert.deepEqual(
     toWasmFlat('let x = 10; x := 9; x'),
@@ -244,7 +244,7 @@ test('toWasm bytecodes - locals & assignment', () => {
       [instr.i32.const, 9, instr.local.tee, 0, instr.drop], // x := 9;
       [instr.local.get, 0], // x
       instr.end,
-    ].flat()
+    ].flat(),
   );
 });
 
@@ -263,7 +263,7 @@ function compile(source) {
 
   const mainFn = func(
     [locals(localVars.size, valtype.i32)],
-    semantics(matchResult).toWasm()
+    semantics(matchResult).toWasm(),
   );
   const mod = module([
     typesec([functype([], [valtype.i32])]),
@@ -278,6 +278,6 @@ test('module with locals & assignment', () => {
   assert.deepEqual(loadMod(compile('let x = 42; x')).main(), 42);
   assert.deepEqual(
     loadMod(compile('let a = 13; let b = 15; a := 10; a + b')).main(),
-    25
+    25,
   );
 });
