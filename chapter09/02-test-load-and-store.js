@@ -83,7 +83,7 @@ function buildModule(importDecls, functionDecls) {
     typesec(types),
     importsec(imports),
     funcsec(funcs),
-    memsec([mem(limits.min(1))]),
+    memsec([mem(memtype(limits.min(1)))]),
     exportsec(exports),
     codesec(codes),
   ]);
@@ -125,9 +125,9 @@ instr.memory = {
 instr.i32.load = 0x28; // [i32] -> [i32]
 instr.i32.store = 0x36; // [i32, i32] -> []
 
-// offset:u32, align:u32
-function memarg(offset, align) {
-  return [u32(offset), u32(align)];
+// align:u32, offset:u32
+function memarg(align, offset) {
+  return [u32(align), u32(offset)];
 }
 
 test('load and store', () => {

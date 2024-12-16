@@ -83,7 +83,7 @@ function buildModule(importDecls, functionDecls) {
     typesec(types),
     importsec(imports),
     funcsec(funcs),
-    memsec([mem(limits.min(1))]),
+    memsec([mem(memtype(limits.min(1)))]),
     exportsec(exports),
     codesec(codes),
   ]);
@@ -125,9 +125,9 @@ instr.memory = {
 instr.i32.load = 0x28; // [i32] -> [i32]
 instr.i32.store = 0x36; // [i32, i32] -> []
 
-// offset:u32, align:u32
-function memarg(offset, align) {
-  return [u32(offset), u32(align)];
+// align:u32, offset:u32
+function memarg(align, offset) {
+  return [u32(align), u32(offset)];
 }
 
 test('load and store', () => {
@@ -157,7 +157,7 @@ test('load and store', () => {
 
 const grammarDef = `
   Wafer {
-    Module = ExternFunctionDecl* FunctionDecl*
+    Module = (FunctionDecl|ExternFunctionDecl)*
 
     Statement = LetStatement
               | IfStatement
@@ -239,6 +239,10 @@ const grammarDef = `
     identStart = letter | "_"
     identPart = identStart | digit
 
+    space += singleLineComment | multiLineComment
+    singleLineComment = "//" (~"\\n" any)*
+    multiLineComment = "/*" (~"*/" any)* "*/"
+
     // Examples:
     //+ "func addOne(x) { x + one }", "func one() { 1 } func two() { 2 }"
     //- "42", "let x", "func x {}"
@@ -308,14 +312,14 @@ function defineToWasm(semantics, symbols) {
       const info = resolveSymbol(ident, scopes.at(-1));
       return [expr.toWasm(), instr.local.tee, localidx(info.idx)];
     },
-    AssignmentExpr_array(ident, _lbracket, offsetExpr, _rbracket, _, expr) {
+    AssignmentExpr_array(ident, _lbracket, idxExpr, _rbracket, _, expr) {
       const tempVar = scopes.at(-1).get('$temp');
       if (ident.sourceString === '__mem') {
         return [
-          offsetExpr.toWasm(),
+          idxExpr.toWasm(),
           expr.toWasm(),
           [instr.local.tee, localidx(tempVar.idx)], // Save value
-          [instr.i32.store, memarg(0, 0)],
+          [instr.i32.store, memarg(2, 0)],
           [instr.local.get, localidx(tempVar.idx)], // Load saved value
         ];
       }
@@ -324,9 +328,9 @@ function defineToWasm(semantics, symbols) {
     PrimaryExpr_paren(_lparen, expr, _rparen) {
       return expr.toWasm();
     },
-    PrimaryExpr_index(ident, _lbracket, offsetExpr, _rbracket) {
+    PrimaryExpr_index(ident, _lbracket, idxExpr, _rbracket) {
       if (ident.sourceString === '__mem') {
-        return [offsetExpr.toWasm(), instr.i32.load, memarg(0, 0)];
+        return [idxExpr.toWasm(), instr.i32.load, memarg(2, 0)];
       }
       throw new Error('Not supported yet');
     },
@@ -453,25 +457,25 @@ function compile(source) {
 
 test('raw memory access', () => {
   const waferSrc = `
-      func write() {
-        let offset = 0;
-        while offset < 256 {
-          __mem[offset] := 1;
-          offset := offset + 4;
-        }
-        0
+    func write() {
+      let offset = 0;
+      while offset < 256 {
+        __mem[offset] := 1;
+        offset := offset + 4;
       }
+      0
+    }
 
-      func sum() {
-        let offset = 0;
-        let sum = 0;
-        while offset < 256 {
-          sum := sum + __mem[offset];
-          offset := offset + 4;
-        }
-        sum
+    func sum() {
+      let offset = 0;
+      let sum = 0;
+      while offset < 256 {
+        sum := sum + __mem[offset];
+        offset := offset + 4;
       }
-    `;
+      sum
+    }
+  `;
 
   const mod = loadMod(compile(waferSrc), {});
   mod.write();
@@ -487,4 +491,14 @@ test('raw memory access', () => {
 });
 
 export * from './chapter08.js';
-export {limits, mem, memidx, memsec, SECTION_ID_MEMORY};
+export {
+  buildModule,
+  buildSymbolTable,
+  limits,
+  mem,
+  memarg,
+  memidx,
+  memsec,
+  memtype,
+  SECTION_ID_MEMORY,
+};

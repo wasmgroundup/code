@@ -83,7 +83,7 @@ function buildModule(importDecls, functionDecls) {
     typesec(types),
     importsec(imports),
     funcsec(funcs),
-    memsec([mem(limits.min(1))]),
+    memsec([mem(memtype(limits.min(1)))]),
     exportsec(exports),
     codesec(codes),
   ]);

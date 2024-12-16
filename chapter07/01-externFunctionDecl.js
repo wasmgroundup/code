@@ -30,7 +30,7 @@ const test = makeTestFn(import.meta.url);
 
 const grammarDef = `
   Wafer {
-    Module = ExternFunctionDecl* FunctionDecl*
+    Module = (FunctionDecl|ExternFunctionDecl)*
 
     Statement = LetStatement
               | IfStatement
@@ -108,6 +108,10 @@ const grammarDef = `
     identifier = ~keyword identStart identPart*
     identStart = letter | "_"
     identPart = identStart | digit
+
+    space += singleLineComment | multiLineComment
+    singleLineComment = "//" (~"\\n" any)*
+    multiLineComment = "/*" (~"*/" any)* "*/"
 
     // Examples:
     //+ "func addOne(x) { x + one }", "func one() { 1 } func two() { 2 }"

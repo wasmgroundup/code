@@ -30,7 +30,7 @@ const test = makeTestFn(import.meta.url);
 
 const grammarDef = `
   Wafer {
-    Module = ExternFunctionDecl* FunctionDecl*
+    Module = (FunctionDecl|ExternFunctionDecl)*
 
     Statement = LetStatement
               | IfStatement
@@ -108,6 +108,10 @@ const grammarDef = `
     identifier = ~keyword identStart identPart*
     identStart = letter | "_"
     identPart = identStart | digit
+
+    space += singleLineComment | multiLineComment
+    singleLineComment = "//" (~"\\n" any)*
+    multiLineComment = "/*" (~"*/" any)* "*/"
 
     // Examples:
     //+ "func addOne(x) { x + one }", "func one() { 1 } func two() { 2 }"
@@ -209,8 +213,8 @@ function compile(source) {
 
 function defineImportDecls(semantics) {
   semantics.addOperation('importDecls', {
-    Module(iterDecls, _) {
-      return iterDecls.children.flatMap((c) => c.importDecls());
+    _default(...children) {
+      return children.flatMap((c) => c.importDecls());
     },
     ExternFunctionDecl(_extern, _func, ident, _l, optParams, _r, _) {
       const name = ident.sourceString;
@@ -289,22 +293,22 @@ test('module with imports', () => {
   // Now test some code that uses imports.
   assert.strictEqual(
     compileAndEval(`
-        extern func add(a, b);
-        func main() {
-          let a = 42;
-          add(a, 1)
-        }
-      `),
+      extern func add(a, b);
+      func main() {
+        let a = 42;
+        add(a, 1)
+      }
+    `),
     43,
   );
   assert.strictEqual(
     compileAndEval(`
-        extern func add(a, b);
-        extern func one();
-        func main() {
-          add(42, one())
-        }
-      `),
+      extern func add(a, b);
+      extern func one();
+      func main() {
+        add(42, one())
+      }
+    `),
     43,
   );
 });
