@@ -1,9 +1,9 @@
 import assert from 'node:assert';
-import {mock} from 'node:test';
 import * as ohm from 'ohm-js';
 
 import {
   blocktype,
+  // buildModule,
   buildSymbolTable,
   code,
   codesec,
@@ -23,7 +23,7 @@ import {
   instr,
   labelidx,
   limits,
-  // loadMod,
+  loadMod,
   localidx,
   makeTestFn,
   mem,
@@ -42,7 +42,7 @@ import {
   u32,
   vec,
   int32ToBytes,
-} from './chapter09.js';
+} from '../chapter09.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -149,8 +149,6 @@ test('extracted examples', () => testExtractedExamples(grammarDef));
 const wafer = ohm.grammar(grammarDef);
 
 const waferPrelude = `
-  extern func __consoleLog(str);
-
   func newInt32Array(len) {
     let freeOffset = __mem[__heap_base];
     __mem[__heap_base] := freeOffset + (len * 4) + 4;
@@ -170,10 +168,6 @@ const waferPrelude = `
       __trap();
     }
     __mem[arr + 4 + (idx * 4)] := val
-  }
-
-  func print(str) {
-    __consoleLog(str)
   }
 `;
 
@@ -511,44 +505,3 @@ test('strings', () => {
   assert.strictEqual(memInt32At(2), 'hey'.charCodeAt(1));
   assert.strictEqual(memInt32At(3), 'hey'.charCodeAt(2));
 });
-
-function loadMod(bytes, imports) {
-  const mod = new WebAssembly.Module(bytes);
-  let memory = undefined;
-  const waferImports = {
-    ...imports.waferImports,
-    __consoleLog: (waferStr) => {
-      console.log(waferStringToJS(memory, waferStr));
-    },
-  };
-  const fullImports = {...imports, waferImports};
-  const {exports} = new WebAssembly.Instance(mod, fullImports);
-  memory = exports.$waferMemory;
-  return exports;
-}
-
-function waferStringToJS(mem, waferStr) {
-  const int32View = new DataView(mem.buffer);
-  const chars = [];
-  const len = int32View.getUint32(waferStr, true);
-  for (let i = 0; i < len; i++) {
-    chars.push(int32View.getUint32(waferStr + (i + 1) * 4, true));
-  }
-  return String.fromCharCode(...chars);
-}
-
-test('print', () => {
-  const waferSrc = `
-    func sayHello() {
-      print("Hello from Wafer!!")
-    }
-  `;
-  const exports = loadMod(compile(waferSrc), {});
-  const consoleLog = mock.method(console, 'log');
-  exports.sayHello();
-  assert.strictEqual(consoleLog.mock.callCount(), 1);
-  assert.deepEqual(consoleLog.mock.calls[0].arguments, ['Hello from Wafer!!']);
-});
-
-export * from './chapter09.js';
-export {data, datasec};

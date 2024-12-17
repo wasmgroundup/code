@@ -42,7 +42,7 @@ import {
   u32,
   vec,
   int32ToBytes,
-} from './chapter09.js';
+} from '../chapter09.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -549,6 +549,3 @@ test('print', () => {
   assert.strictEqual(consoleLog.mock.callCount(), 1);
   assert.deepEqual(consoleLog.mock.calls[0].arguments, ['Hello from Wafer!!']);
 });
-
-export * from './chapter09.js';
-export {data, datasec};

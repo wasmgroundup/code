@@ -1,9 +1,9 @@
 import assert from 'node:assert';
-import {mock} from 'node:test';
 import * as ohm from 'ohm-js';
 
 import {
   blocktype,
+  // buildModule,
   buildSymbolTable,
   code,
   codesec,
@@ -23,7 +23,7 @@ import {
   instr,
   labelidx,
   limits,
-  // loadMod,
+  loadMod,
   localidx,
   makeTestFn,
   mem,
@@ -42,7 +42,7 @@ import {
   u32,
   vec,
   int32ToBytes,
-} from './chapter09.js';
+} from '../chapter09.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -149,11 +149,14 @@ test('extracted examples', () => testExtractedExamples(grammarDef));
 const wafer = ohm.grammar(grammarDef);
 
 const waferPrelude = `
-  extern func __consoleLog(str);
-
   func newInt32Array(len) {
-    let freeOffset = __mem[__heap_base];
-    __mem[__heap_base] := freeOffset + (len * 4) + 4;
+    let freeOffset = __mem[0];
+
+    if freeOffset == 0 {
+      freeOffset := 4;
+    }
+
+    __mem[0] := freeOffset + (len * 4) + 4;
     __mem[freeOffset] := len;
     freeOffset
   }
@@ -171,10 +174,6 @@ const waferPrelude = `
     }
     __mem[arr + 4 + (idx * 4)] := val
   }
-
-  func print(str) {
-    __consoleLog(str)
-  }
 `;
 
 function compile(source) {
@@ -184,23 +183,17 @@ function compile(source) {
   }
 
   const symbols = buildSymbolTable(wafer, matchResult);
-  const strings = buildStringTable(wafer, matchResult);
   const semantics = wafer.createSemantics();
-  defineToWasm(semantics, symbols, strings);
+  defineToWasm(semantics, symbols);
   defineImportDecls(semantics);
   defineFunctionDecls(semantics, symbols);
 
   const importDecls = semantics(matchResult).importDecls();
   const functionDecls = semantics(matchResult).functionDecls();
-  const heapBase = strings.data.length;
-  const dataSegs = [
-    {offset: 0, bytes: strings.data},
-    {offset: heapBase, bytes: int32ToBytes(heapBase + 4)},
-  ];
-  return buildModule(importDecls, functionDecls, dataSegs);
+  return buildModule(importDecls, functionDecls);
 }
 
-function defineToWasm(semantics, symbols, stringTable) {
+function defineToWasm(semantics, symbols) {
   const scopes = [symbols];
 
   const functionCall = (name) => {
@@ -320,9 +313,6 @@ function defineToWasm(semantics, symbols, stringTable) {
       ];
     },
     PrimaryExpr_var(ident) {
-      if (ident.sourceString === '__heap_base')
-        return [instr.i32.const, i32(stringTable.data.length)];
-
       const info = resolveSymbol(ident, scopes.at(-1));
       return [instr.local.get, localidx(info.idx)];
     },
@@ -353,10 +343,6 @@ function defineToWasm(semantics, symbols, stringTable) {
     number(_digits) {
       const num = parseInt(this.sourceString, 10);
       return [instr.i32.const, ...i32(num)];
-    },
-    stringLiteral(_lquote, chars, _rquote) {
-      const addr = stringTable.offsets.get(chars.sourceString);
-      return [instr.i32.const, i32(addr)];
     },
   });
 }
@@ -490,65 +476,3 @@ test('buildModule with data section', async () => {
   assert.strictEqual(mem.getUint8(2), 0x12);
   assert.strictEqual(mem.getUint8(3), 0x34);
 });
-
-test('strings', () => {
-  const waferSrc = `
-    func main() {
-      let s = "hey";
-      let arr = newInt32Array(1);
-      arr[0] := 42;
-      s
-    }
-  `;
-  const exports = loadMod(compile(waferSrc), {});
-  exports.main();
-
-  const view = new DataView(exports.$waferMemory.buffer);
-  const memInt32At = (idx) => view.getUint32(idx * 4, true);
-
-  assert.strictEqual(memInt32At(0), 'hey'.length);
-  assert.strictEqual(memInt32At(1), 'hey'.charCodeAt(0));
-  assert.strictEqual(memInt32At(2), 'hey'.charCodeAt(1));
-  assert.strictEqual(memInt32At(3), 'hey'.charCodeAt(2));
-});
-
-function loadMod(bytes, imports) {
-  const mod = new WebAssembly.Module(bytes);
-  let memory = undefined;
-  const waferImports = {
-    ...imports.waferImports,
-    __consoleLog: (waferStr) => {
-      console.log(waferStringToJS(memory, waferStr));
-    },
-  };
-  const fullImports = {...imports, waferImports};
-  const {exports} = new WebAssembly.Instance(mod, fullImports);
-  memory = exports.$waferMemory;
-  return exports;
-}
-
-function waferStringToJS(mem, waferStr) {
-  const int32View = new DataView(mem.buffer);
-  const chars = [];
-  const len = int32View.getUint32(waferStr, true);
-  for (let i = 0; i < len; i++) {
-    chars.push(int32View.getUint32(waferStr + (i + 1) * 4, true));
-  }
-  return String.fromCharCode(...chars);
-}
-
-test('print', () => {
-  const waferSrc = `
-    func sayHello() {
-      print("Hello from Wafer!!")
-    }
-  `;
-  const exports = loadMod(compile(waferSrc), {});
-  const consoleLog = mock.method(console, 'log');
-  exports.sayHello();
-  assert.strictEqual(consoleLog.mock.callCount(), 1);
-  assert.deepEqual(consoleLog.mock.calls[0].arguments, ['Hello from Wafer!!']);
-});
-
-export * from './chapter09.js';
-export {data, datasec};
