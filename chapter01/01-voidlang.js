@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import {basename} from 'node:path';
 import process from 'node:process';
 import {default as nodeTest} from 'node:test';
 import {fileURLToPath} from 'node:url';
@@ -12,10 +13,15 @@ function compileVoidLang(code) {
 }
 
 function makeTestFn(url) {
-  if (process.env.NODE_TEST_CONTEXT && process.argv[1] === fileURLToPath(url)) {
-    return (...args) => nodeTest(...args); // register the test normally
+  const runTests = process.env.NODE_TEST_CONTEXT != null;
+  if (runTests && process.argv[1] === fileURLToPath(url)) {
+    // Register the test normally.
+    return (testName, ...args) => {
+      const filename = basename(url, '.js');
+      nodeTest(`[${filename}] ${testName}`, ...args);
+    };
   }
-  return () => {}; // ignore the test
+  return () => {}; // Ignore the test.
 }
 
 const test = makeTestFn(import.meta.url);

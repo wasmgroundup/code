@@ -21,6 +21,7 @@ import {
   importsec,
   importdesc,
   instr,
+  int32ToBytes,
   labelidx,
   limits,
   loadMod,
@@ -41,7 +42,6 @@ import {
   valtype,
   u32,
   vec,
-  int32ToBytes,
 } from '../chapter09.js';
 
 const test = makeTestFn(import.meta.url);
