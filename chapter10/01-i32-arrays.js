@@ -21,7 +21,6 @@ import {
   importdesc,
   importsec,
   instr,
-  int32ToBytes,
   labelidx,
   limits,
   loadMod,
@@ -42,6 +41,10 @@ import {
 } from '../chapter09.js';
 
 const test = makeTestFn(import.meta.url);
+
+function int32ToBytes(v) {
+  return [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff];
+}
 
 const grammarDef = `
   Wafer {

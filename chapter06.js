@@ -331,7 +331,7 @@ test('Wafer conditionals, comparisons, and loops', () => {
         func countTo(n) {
           let x = 0;
           while x < n {
-            if x < 100 { x := x + 1; }
+            if x < 60 { x := x + 1; }
           }
           x
         }

@@ -22,11 +22,11 @@ import {
 const test = makeTestFn(import.meta.url);
 
 const grammarDef = `
-    Wafer {
-      Main = number
-      number = digit+
-    }
-  `;
+  Wafer {
+    Main = number
+    number = digit+
+  }
+`;
 
 const wafer = ohm.grammar(grammarDef);
 

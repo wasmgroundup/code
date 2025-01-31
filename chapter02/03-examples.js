@@ -22,15 +22,15 @@ import {
 const test = makeTestFn(import.meta.url);
 
 const grammarDef = `
-    Wafer {
-      Main = number
-      number = digit+
+  Wafer {
+    Main = number
+    number = digit+
 
-      // Examples:
-      //+ "42", "1"
-      //- "abc"
-    }
-  `;
+    // Examples:
+    //+ "42", "1"
+    //- "abc"
+  }
+`;
 
 function testExtractedExamples(grammarSource) {
   const grammar = ohm.grammar(grammarSource);

@@ -22,10 +22,10 @@ import {
 const test = makeTestFn(import.meta.url);
 
 const grammarDef = `
-    NopLang {
-      Main = ""
-    }
-  `;
+  NopLang {
+    Main = ""
+  }
+`;
 
 const grammar = ohm.grammar(grammarDef);
 
