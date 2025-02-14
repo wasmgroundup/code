@@ -75,7 +75,7 @@ function locals(n, type) {
   return [u32(n), type];
 }
 
-const localidx = u32;
+const localidx = (x) => u32(x);
 
 function compileLocals() {
   const mod = module([

@@ -336,7 +336,7 @@ function defineToWasm(semantics, symbols) {
   });
 }
 
-instr.i32.unreachable = 0x00;
+instr.unreachable = 0x00;
 
 test('i32 arrays', () => {
   const waferSrc = `
