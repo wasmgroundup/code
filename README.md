@@ -1,6 +1,6 @@
 # 🧱 WebAssembly from the Ground Up
 
-_(From the book [WebAssembly from the Ground Up](https://wasmgroundup.com) — learn Wasm by building a simple compiler.)_
+_(From the book [WebAssembly from the Ground Up](https://wasmgroundup.com) — learn Wasm by building a simple compiler in JavaScript.)_
 
 Welcome! This repo contains the code from every checkpoint in the book.
 
