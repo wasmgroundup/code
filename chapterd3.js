@@ -6,6 +6,7 @@ import {
   funcsec,
   functype,
   instr,
+  locals,
   makeTestFn,
   module,
   name,
@@ -15,7 +16,7 @@ import {
   u32,
   valtype,
   vec,
-} from '../chapter05.js';
+} from './chapter05.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -76,7 +77,7 @@ function indirectnameassoc(idx, namemap) {
   return [idx, namemap];
 }
 
-export * from '../chapter12.js';
+export * from './chapter11.js';
 export {
   SECTION_ID_CUSTOM,
   custom,

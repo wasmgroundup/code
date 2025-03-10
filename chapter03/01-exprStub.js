@@ -18,3 +18,5 @@ const grammarDef = `
 `;
 
 test('Extracted examples', () => testExtractedExamples(grammarDef));
+
+const wafer = ohm.grammar(grammarDef);

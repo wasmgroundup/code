@@ -22,7 +22,7 @@ import {
   u32,
   valtype,
   vec,
-} from './chapter11.js';
+} from './chapterd3.js';
 
 const test = makeTestFn(import.meta.url);
 
@@ -264,5 +264,5 @@ test('compileElementSection works', async () => {
   assert.strictEqual(mytable.get(1), fourtyThree);
 });
 
-export * from './chapter11.js';
+export * from './chapterd3.js';
 export {elemtype, SECTION_ID_TABLE, table, tableidx, tablesec, tabletype};
